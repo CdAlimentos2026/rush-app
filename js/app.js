@@ -3,7 +3,7 @@ import { db, getSettings, saveSettings, getDraft, clearDraft, uid } from './db.j
 import { h, icons, icon, toast, fmtDate, fmtDateTime, todayISO, nowTime, daysBetween, imgFor, photoLink } from './ui.js';
 import { VISITA, COMERCIO, DEGUSTACION, allFields, disponibilidad, totalesHoras, lift } from './schema.js';
 import { runWizard, getGPS, photoMetaFor } from './form.js';
-import { syncAll, pull, fullSync, pendingCount, onSyncChange, isConfigured, ping, getParams, splitList } from './sync.js';
+import { syncAll, pull, fullSync, pendingCount, onSyncChange, isConfigured, ping, getParams, splitList, SHEET_NAME } from './sync.js';
 import { renderDashboard } from './dashboard.js';
 import { loadDemo, clearDemo } from './demo.js';
 
@@ -47,7 +47,7 @@ const routes = [
 
 async function router() {
   const hash = location.hash || '#/';
-  if (!getSettings().user && hash !== '#/ajustes') return bienvenida();
+  if (!getSettings().user || !isConfigured()) return bienvenida();
   for (const [re, fn] of routes) {
     const m = hash.match(re);
     if (m) {
@@ -91,7 +91,7 @@ onSyncChange((s) => {
   if (!s.running) updatePill();
 });
 async function manualSync() {
-  if (!isConfigured()) { toast('Conectá el Google Sheet en Ajustes.'); go('#/ajustes'); return; }
+  if (!isConfigured()) { router(); return; }
   if (!navigator.onLine) { toast('Sin señal. Se sube solo cuando vuelva.'); return; }
   toast('Sincronizando…');
   const r = await fullSync();
@@ -108,19 +108,35 @@ const syncTag = (r) => (r._demo ? h('span', { class: 'tag' }, 'Ejemplo') : r._sy
 // ---------------------------------------------------------------- bienvenida
 function bienvenida() {
   nav.hidden = true;
-  const inp = h('input', { class: 'input', placeholder: 'Tu nombre', autocomplete: 'name' });
-  root.replaceChildren(h('div', { class: 'enter', style: { paddingTop: '12vh' } },
+  const s = getSettings();
+  const inp = h('input', { class: 'input', id: 'w-name', placeholder: 'Tu nombre', autocomplete: 'name', value: s.user || '' });
+  const code = h('input', { class: 'input', id: 'w-code', placeholder: 'Código que te pasó la marca', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
+  const msg = h('p', { class: 'caption mt-3', role: 'status' });
+  const btn = h('button', { class: 'btn btn-primary btn-block mt-6', onclick: async () => {
+    if (!inp.value.trim()) { inp.focus(); return; }
+    if (!code.value.trim()) { code.focus(); return; }
+    btn.disabled = true;
+    msg.textContent = 'Verificando…';
+    try {
+      await ping(code.value.trim());
+      saveSettings({ ...getSettings(), user: inp.value.trim(), token: code.value.trim() });
+      msg.textContent = 'Listo.';
+      fullSync().catch(() => {}).finally(() => updatePill());
+      router();
+    } catch (e) {
+      btn.disabled = false;
+      msg.textContent = /clave/i.test(e.message) ? 'El código no es correcto. Revisalo y probá de nuevo.' : 'No hay conexión. La primera vez necesitás señal para entrar.';
+    }
+  } }, 'Empezar', h('span', { class: 'arrow' }, icon('arrow')));
+  root.replaceChildren(h('div', { class: 'enter', style: { paddingTop: '10vh' } },
     h('p', { class: 'lk-eyebrow' }, '¿Qué vas a mover hoy?'),
     h('h1', { class: 'lk-title' }, h('span', { class: 'v' }, 'Hacé'), ' que pase', h('span', { class: 'x' }, '!')),
     h('p', { class: 'lk-word' }, 'Rush Energy'),
     h('hr', { class: 'rule' }),
-    h('p', { class: 'body' }, 'Esta es tu herramienta de calle. Cada visita y cada degustación quedan registradas y llegan al tablero. Para empezar, ¿cómo te llamás?'),
-    h('div', { class: 'field mt-6' }, inp),
-    h('button', { class: 'btn btn-primary btn-block mt-4', onclick: () => {
-      if (!inp.value.trim()) { inp.focus(); return; }
-      saveSettings({ ...getSettings(), user: inp.value.trim() });
-      router();
-    } }, 'Empezar', h('span', { class: 'arrow' }, icon('arrow')))));
+    h('p', { class: 'body' }, 'Esta es tu herramienta de calle. Cada visita y cada degustación quedan registradas y llegan al tablero.'),
+    h('div', { class: 'field mt-6' }, h('label', { class: 'field-label', for: 'w-name' }, '¿Cómo te llamás?'), inp),
+    h('div', { class: 'field' }, h('label', { class: 'field-label', for: 'w-code' }, 'Código de acceso'), code),
+    btn, msg));
 }
 
 // ---------------------------------------------------------------- inicio
@@ -153,7 +169,7 @@ async function home() {
     root.append(h('div', { class: 'section' }, h('a', { class: 'card alert', href: '#/ajustes', style: { display: 'flex', textDecoration: 'none' } },
       h('span', { class: 'sym' }),
       h('div', { class: 'alert-body' }, h('div', { class: 'alert-title' }, 'No está conectada al Google Sheet'),
-        h('div', { class: 'caption' }, 'Lo que cargues queda solo en este celular. Tocá acá y pegá la dirección y la clave en Ajustes.')))));
+        h('div', { class: 'caption' }, 'Lo que cargues queda solo en este celular. Tocá acá para cargar el código de acceso.')))));
   } else if (conError.length) {
     root.append(h('div', { class: 'section' }, h('button', { class: 'card alert', onclick: manualSync, style: { display: 'flex', width: '100%', textAlign: 'left', color: 'inherit' } },
       h('span', { class: 'sym' }),
@@ -573,12 +589,21 @@ async function tablero() {
 async function ajustes() {
   const s = getSettings();
   const name = h('input', { class: 'input', value: s.user || '' });
-  const url = h('input', { class: 'input', value: s.url || '', placeholder: 'https://script.google.com/macros/s/…/exec', inputmode: 'url' });
-  const token = h('input', { class: 'input', value: s.token || '', placeholder: 'Clave del Sheet', autocomplete: 'off' });
-  const status = h('p', { class: 'caption mt-3' });
+  const status = h('p', { class: 'caption mt-3', role: 'status' });
   const pend = await pendingCount();
   const lastSync = await db.getMeta('lastSync');
-  const save = () => saveSettings({ ...getSettings(), user: name.value.trim(), url: url.value.trim(), token: token.value.trim() });
+  const save = () => saveSettings({ ...getSettings(), user: name.value.trim() || getSettings().user });
+
+  // Código de acceso: solo para cuando se genera uno nuevo en el script. El Sheet no se puede cambiar.
+  const codeBox = h('div', { hidden: true });
+  const code = h('input', { class: 'input', placeholder: 'Código nuevo', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
+  codeBox.append(h('div', { class: 'field mt-4' }, h('label', { class: 'field-label' }, 'Código de acceso nuevo'), code),
+    h('button', { class: 'btn btn-secondary mt-3', onclick: async () => {
+      if (!code.value.trim()) { code.focus(); return; }
+      status.textContent = 'Verificando…';
+      try { await ping(code.value.trim()); saveSettings({ ...getSettings(), token: code.value.trim() }); status.textContent = 'Código actualizado.'; codeBox.hidden = true; }
+      catch (e) { status.textContent = /clave/i.test(e.message) ? 'Ese código no es correcto.' : 'Sin conexión. Probá con señal.'; }
+    } }, 'Guardar código'));
 
   root.append(topBar(), h('div', { class: 'enter' },
     h('p', { class: 'eyebrow mt-4' }, 'Configuración'),
@@ -586,20 +611,20 @@ async function ajustes() {
     h('div', { class: 'field mt-6' }, h('label', { class: 'field-label' }, 'Tu nombre'), name),
     h('div', { class: 'section' },
       h('p', { class: 'eyebrow' }, 'Google Sheet'),
-      h('p', { class: 'body small' }, 'Pegá la dirección del Apps Script y la clave que aparecen en el Sheet, en el menú Rush App → Ver datos de conexión.'),
-      h('div', { class: 'field mt-4' }, h('label', { class: 'field-label' }, 'Dirección del Apps Script'), url),
-      h('div', { class: 'field' }, h('label', { class: 'field-label' }, 'Clave'), token),
+      h('div', { class: 'card' },
+        h('div', { class: 'micro' }, 'Conectada a'),
+        h('div', { class: 'h3 mt-2' }, SHEET_NAME),
+        h('p', { class: 'caption mt-2' }, 'Es fija: todo lo que se carga en esta app va siempre a este Sheet.')),
       h('div', { class: 'btn-row mt-4' },
         h('button', { class: 'btn btn-primary', onclick: async () => {
-          save();
-          if (!getSettings().url) { status.textContent = 'Guardado. Sin Sheet, todo queda en el celular.'; return; }
-          status.textContent = 'Probando conexión…';
-          try { const r = await ping(); status.textContent = `Conectado a "${r.sheet}". Sincronizando…`; const x = await fullSync(); status.textContent = `Conectado. ${x.done || 0} subidos, ${x.received || 0} recibidos.`; updatePill(); }
-          catch (e) { status.textContent = 'No se pudo conectar: ' + e.message; }
-        } }, 'Guardar y probar'),
-        h('button', { class: 'btn btn-secondary', onclick: manualSync }, icon('sync'), 'Sincronizar')),
+          status.textContent = 'Sincronizando…';
+          try { const x = await fullSync(); status.textContent = x.skipped ? 'Sin señal. Se sube solo cuando vuelva.' : `Listo. ${x.done || 0} subidos, ${x.received || 0} recibidos.${x.failed ? ` ${x.failed} con error: ${x.lastError}` : ''}`; updatePill(); }
+          catch (e) { status.textContent = 'No se pudo sincronizar: ' + e.message; }
+        } }, icon('sync'), 'Sincronizar ahora')),
       status,
-      h('p', { class: 'caption mt-3' }, `${pend} registros sin subir · última sincronización: ${lastSync ? fmtDateTime(lastSync) : 'nunca'}`)),
+      h('p', { class: 'caption mt-3' }, `${pend} registros sin subir · última sincronización: ${lastSync ? fmtDateTime(lastSync) : 'nunca'}`),
+      h('button', { class: 'btn btn-tertiary mt-2', style: { paddingLeft: 0 }, onclick: () => { codeBox.hidden = !codeBox.hidden; } }, 'Cambiar código de acceso'),
+      codeBox),
     h('div', { class: 'section' },
       h('p', { class: 'eyebrow' }, 'Datos de ejemplo'),
       h('p', { class: 'body small' }, 'Para ver cómo se llena el tablero antes de salir a la calle. Los datos de ejemplo nunca se suben al Sheet.'),
@@ -608,8 +633,9 @@ async function ajustes() {
         h('button', { class: 'btn btn-tertiary', onclick: async () => { await clearDemo(); toast('Datos de ejemplo borrados.'); router(); } }, 'Borrar ejemplo'))),
     h('div', { class: 'section' },
       h('button', { class: 'btn btn-secondary btn-block', onclick: () => { save(); toast('Guardado.'); go('#/'); } }, 'Listo')),
-    h('p', { class: 'caption mt-8' }, 'Rush · App de campo · v1.0')));
+    h('p', { class: 'caption mt-8' }, 'Rush · App de campo · v1.1')));
 }
+
 
 // ---------------------------------------------------------------- arranque
 async function boot() {

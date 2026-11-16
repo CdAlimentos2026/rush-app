@@ -43,9 +43,11 @@ Es una carpeta de archivos estáticos. Se publica en un repositorio propio de Gi
 Tiene que ser `https`, que GitHub Pages ya da; sin `https`, la cámara y el GPS no funcionan.
 
 ### 3. En el celular del Encargado
-1. Abrir la dirección en Chrome (Android) o Safari (iPhone) → **Agregar a pantalla de inicio**.
-2. Escribir su nombre.
-3. **Ajustes** → pegar la dirección y la clave del Sheet → **Guardar y probar**.
+1. Abrir https://cdalimentos2026.github.io/rush-app/ en Chrome (Android) o Safari (iPhone) → **Agregar a pantalla de inicio**.
+2. Escribir su nombre y el **código de acceso** (la clave del script). La primera vez necesita señal.
+
+La dirección del Sheet está fija en el código (`SHEET_URL` en `js/sync.js`): desde la app no se puede apuntar a otro Sheet.
+Si se genera una clave nueva en el script (función `nuevaClave`), cada celular la carga en Ajustes → Cambiar código de acceso.
 
 ## Cómo se usa
 - **Visita**: 9 pasos en el orden en que se recorre el comercio (llegás → frío → latas → precio → material → competencia → dueño → premio → cierre).
