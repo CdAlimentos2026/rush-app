@@ -1,7 +1,7 @@
 // Service worker: deja la app abierta sin señal. Subí VERSION cuando cambies archivos.
-const VERSION = 'rush-v4';
+const VERSION = 'rush-v5';
 const SHELL = [
-  './', 'index.html', 'manifest.webmanifest', 'css/app.css?v=4', 'js/app.js?v=4',
+  './', 'index.html', 'manifest.webmanifest', 'css/app.css?v=5', 'js/app.js?v=5',
   'js/app.js', 'js/db.js', 'js/ui.js', 'js/form.js', 'js/schema.js', 'js/sync.js', 'js/dashboard.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png',
 ];
@@ -24,8 +24,8 @@ self.addEventListener('fetch', (e) => {
     return;
   }
   if (url.origin !== location.origin) return;
-  // App: red primero (para tomar cambios), caché si no hay señal
-  e.respondWith(fetch(req).then((r) => {
+  // App: red primero, sin caché HTTP (para tomar siempre la última versión); caché si no hay señal
+  e.respondWith(fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' }).then((r) => {
     const copy = r.clone();
     caches.open(VERSION).then((c) => c.put(req, copy));
     return r;
