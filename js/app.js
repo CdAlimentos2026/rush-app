@@ -630,7 +630,38 @@ async function ajustes() {
         } }, icon('sync'), 'Sincronizar ahora')),
       status,
       h('p', { class: 'caption mt-3' }, `${pend} registros sin subir · última sincronización: ${lastSync ? fmtDateTime(lastSync) : 'nunca'}`)),
-    h('p', { class: 'caption mt-8' }, 'Rush · App de campo · v1.3')));
+    h('div', { class: 'section' },
+      h('hr', { class: 'divider' }),
+      h('button', { class: 'btn btn-secondary btn-block', onclick: () => cerrarSesion(status) }, 'Cerrar sesión'),
+      h('p', { class: 'caption mt-2' }, 'Al cerrar sesión se borran los datos guardados en este celular. Lo que ya está en el Sheet no se toca.')),
+    h('p', { class: 'caption mt-8' }, 'Rush · App de campo · v1.4')));
+}
+
+// Cerrar sesión: primero intenta subir lo pendiente; si queda algo sin subir, no deja salir
+// (se perdería). Después borra todo lo local para que el próximo usuario empiece limpio.
+async function cerrarSesion(status) {
+  if (getDraft('visita') && !confirm('Tenés una visita sin terminar. Si cerrás sesión se pierde. ¿Seguir?')) return;
+  let pend = await pendingCount();
+  if (pend && !soloLectura()) {
+    status.textContent = 'Subiendo lo pendiente antes de salir…';
+    try { await syncAll(); } catch {}
+    pend = await pendingCount();
+    if (pend) {
+      status.textContent = '';
+      alert(`Hay ${pend} ${pend === 1 ? 'registro' : 'registros'} sin subir al Sheet. Conectate a internet, tocá "Sincronizar ahora" y después cerrá sesión. Si salís ahora, se pierden.`);
+      return;
+    }
+  }
+  if (!confirm(`¿Cerrar la sesión de ${user()}?`)) return;
+  await db.clearAll();
+  try {
+    Object.keys(localStorage).filter((k) => k.startsWith('rush.')).forEach((k) => localStorage.removeItem(k));
+    sessionStorage.clear();
+  } catch {}
+  navRol = null;
+  root.classList.remove('wide');
+  location.hash = '#/';
+  router();
 }
 
 // ---------------------------------------------------------------- navegación según el rol

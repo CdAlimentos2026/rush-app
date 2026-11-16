@@ -52,6 +52,11 @@ export const db = {
   async delPhoto(id) { return tx('photos', 'readwrite', (s) => s.delete(id)); },
   async allPhotos() { return tx('photos', 'readonly', (s) => req2p(s.getAll())); },
 
+  // Borra todo lo guardado en el celular (se usa al cerrar sesión).
+  async clearAll() {
+    for (const store of ['records', 'photos', 'meta']) await tx(store, 'readwrite', (s) => s.clear());
+  },
+
   async getMeta(k, def) { const r = await tx('meta', 'readonly', (s) => req2p(s.get(k))); return r ? r.v : def; },
   async setMeta(k, v) { return tx('meta', 'readwrite', (s) => s.put({ k, v })); },
 };
