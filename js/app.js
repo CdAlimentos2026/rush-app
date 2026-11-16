@@ -1,5 +1,5 @@
 // Rush · App de campo del Encargado de la marca
-import { db, getSettings, saveSettings, getDraft, clearDraft, uid } from './db.js';
+import { db, getSettings, saveSettings, getDraft, clearDraft, uid, useUserSpace } from './db.js';
 import { h, icons, icon, toast, fmtDate, fmtDateTime, todayISO, nowTime, daysBetween, imgFor, photoLink } from './ui.js';
 import { VISITA, COMERCIO, DEGUSTACION, allFields, disponibilidad, totalesHoras, lift } from './schema.js';
 import { runWizard, getGPS, photoMetaFor } from './form.js';
@@ -129,7 +129,9 @@ function bienvenida() {
     msg.textContent = 'Verificando…';
     try {
       const r = await login(inp.value.trim(), pin.value.trim());
-      saveSettings({ user: r.user, pin: pin.value.trim(), rol: r.rol || 'campo' });
+      saveSettings({ ...getSettings(), user: r.user, pin: pin.value.trim(), rol: r.rol || 'campo' });
+      useUserSpace(r.user); // cada usuario usa su propio espacio en el celular
+      await db.migrateLegacy(r.user);
       // Antes de mostrar el inicio, trae todo lo que ya está en el Sheet (por si es un celular nuevo).
       msg.textContent = 'Trayendo tus datos…';
       await Promise.race([fullSync().catch(() => {}), new Promise((res) => setTimeout(res, 20000))]);
@@ -633,31 +635,30 @@ async function ajustes() {
     h('div', { class: 'section' },
       h('hr', { class: 'divider' }),
       h('button', { class: 'btn btn-secondary btn-block', onclick: () => cerrarSesion(status) }, 'Cerrar sesión'),
-      h('p', { class: 'caption mt-2' }, 'Al cerrar sesión se borran los datos guardados en este celular. Lo que ya está en el Sheet no se toca.')),
+      h('p', { class: 'caption mt-2' }, 'Tus datos quedan guardados en este celular, aparte de los de otras personas. Cuando vuelvas a entrar, está todo como lo dejaste.')),
     h('p', { class: 'caption mt-8' }, 'Rush · App de campo · v1.4')));
 }
 
-// Cerrar sesión: primero intenta subir lo pendiente; si queda algo sin subir, no deja salir
-// (se perdería). Después borra todo lo local para que el próximo usuario empiece limpio.
+// Cerrar sesión: no borra nada. Los datos de cada usuario quedan en su propio espacio del celular;
+// lo que no se subió se sube solo cuando esa persona vuelva a entrar en este celular.
 async function cerrarSesion(status) {
-  if (getDraft('visita') && !confirm('Tenés una visita sin terminar. Si cerrás sesión se pierde. ¿Seguir?')) return;
   let pend = await pendingCount();
-  if (pend && !soloLectura()) {
+  if (pend && !soloLectura() && navigator.onLine) {
     status.textContent = 'Subiendo lo pendiente antes de salir…';
     try { await syncAll(); } catch {}
     pend = await pendingCount();
-    if (pend) {
-      status.textContent = '';
-      alert(`Hay ${pend} ${pend === 1 ? 'registro' : 'registros'} sin subir al Sheet. Conectate a internet, tocá "Sincronizar ahora" y después cerrá sesión. Si salís ahora, se pierden.`);
-      return;
-    }
+    status.textContent = '';
   }
-  if (!confirm(`¿Cerrar la sesión de ${user()}?`)) return;
-  await db.clearAll();
-  try {
-    Object.keys(localStorage).filter((k) => k.startsWith('rush.')).forEach((k) => localStorage.removeItem(k));
-    sessionStorage.clear();
-  } catch {}
+  const aviso = pend
+    ? `Quedan ${pend} ${pend === 1 ? 'registro' : 'registros'} sin subir. No se pierden: se suben cuando vuelvas a entrar como ${user()} en este celular.
+
+¿Cerrar sesión?`
+    : `¿Cerrar la sesión de ${user()}?`;
+  if (!confirm(aviso)) return;
+  const { periodo, ciudad, persona } = getSettings();
+  saveSettings({ periodo, ciudad, persona }); // sin usuario ni código
+  try { sessionStorage.clear(); } catch {}
+  useUserSpace(null);
   navRol = null;
   root.classList.remove('wide');
   location.hash = '#/';
@@ -684,6 +685,9 @@ function buildNav() {
 
 // ---------------------------------------------------------------- arranque
 async function boot() {
+  useUserSpace(getSettings().pin ? getSettings().user : null);
+  // Quien ya tenía sesión abierta en una versión anterior: pasa sus datos a su espacio propio.
+  if (getSettings().pin) await db.migrateLegacy(getSettings().user);
   await router();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   // Sincroniza al abrir, al volver la señal, al volver a la app y cada 5 minutos.

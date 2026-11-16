@@ -1,9 +1,23 @@
 // Almacenamiento local: IndexedDB para registros y fotos (funciona sin señal),
 // localStorage para ajustes y borradores.
+// Cada usuario tiene su propio espacio en el celular (una base por usuario): al cerrar sesión no se
+// borra nada, y lo de una persona nunca se mezcla ni se sube con el usuario de otra.
 
-const DB_NAME = 'rush-app';
+const LEGACY_DB = 'rush-app'; // base compartida de versiones anteriores
 const DB_VER = 1;
+let DB_NAME = LEGACY_DB;
 let dbp;
+
+const userKey = (u) => String(u || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+// Elige el espacio del usuario que está usando la app.
+export function useUserSpace(user) {
+  const name = user ? `${LEGACY_DB}::${userKey(user)}` : LEGACY_DB;
+  if (name === DB_NAME) return;
+  if (dbp) dbp.then((d) => d.close()).catch(() => {});
+  dbp = null;
+  DB_NAME = name;
+}
 
 function open() {
   if (dbp) return dbp;
@@ -52,9 +66,28 @@ export const db = {
   async delPhoto(id) { return tx('photos', 'readwrite', (s) => s.delete(id)); },
   async allPhotos() { return tx('photos', 'readonly', (s) => req2p(s.getAll())); },
 
-  // Borra todo lo guardado en el celular (se usa al cerrar sesión).
-  async clearAll() {
-    for (const store of ['records', 'photos', 'meta']) await tx(store, 'readwrite', (s) => s.clear());
+  // Pasa al espacio del usuario lo que había en la base compartida de versiones anteriores
+  // (solo lo suyo). Se hace una vez por usuario y no borra la base vieja.
+  async migrateLegacy(user) {
+    if (await this.getMeta('legacyChecked')) return 0;
+    let moved = 0;
+    try {
+      const list = indexedDB.databases ? await indexedDB.databases() : [];
+      if (list.some((d) => d.name === LEGACY_DB)) {
+        const old = await new Promise((res, rej) => { const r = indexedDB.open(LEGACY_DB, DB_VER); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+        if (old.objectStoreNames.contains('records')) {
+          const getAll = (store) => new Promise((res, rej) => { const q = old.transaction(store, 'readonly').objectStore(store).getAll(); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
+          const recs = (await getAll('records')).filter((r) => !r._demo && userKey(r.user) === userKey(user));
+          const photos = old.objectStoreNames.contains('photos') ? await getAll('photos') : [];
+          if (recs.length) await this.putMany(recs);
+          for (const p of photos) await this.putPhoto(p);
+          moved = recs.length;
+        }
+        old.close();
+      }
+    } catch {}
+    await this.setMeta('legacyChecked', Date.now());
+    return moved;
   },
 
   async getMeta(k, def) { const r = await tx('meta', 'readonly', (s) => req2p(s.get(k))); return r ? r.v : def; },
@@ -70,14 +103,16 @@ export function saveSettings(s) {
   try { localStorage.setItem(SKEY, JSON.stringify(s)); } catch {}
 }
 
+// Los borradores (formularios a medio llenar) también son de cada usuario.
+const draftKey = (key) => `rush.draft.${userKey(getSettings().user)}.${key}`;
 export function getDraft(key) {
-  try { return JSON.parse(localStorage.getItem('rush.draft.' + key)); } catch { return null; }
+  try { return JSON.parse(localStorage.getItem(draftKey(key))); } catch { return null; }
 }
 export function saveDraft(key, v) {
-  try { localStorage.setItem('rush.draft.' + key, JSON.stringify(v)); } catch {}
+  try { localStorage.setItem(draftKey(key), JSON.stringify(v)); } catch {}
 }
 export function clearDraft(key) {
-  try { localStorage.removeItem('rush.draft.' + key); } catch {}
+  try { localStorage.removeItem(draftKey(key)); } catch {}
 }
 
 export function uid(prefix = '') {
