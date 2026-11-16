@@ -1,7 +1,7 @@
 // Sincronización con el Google Sheet a través del Apps Script (ver apps-script/Code.gs).
 // Todo se guarda primero en el celular; esto sube lo pendiente cuando hay señal.
 
-import { db, getSettings } from './db.js';
+import { db, getSettings, saveSettings } from './db.js';
 import { VISITA, COMERCIO, DEGUSTACION, allFields, disponibilidad, totalesHoras, lift } from './schema.js';
 
 const FORMS = { visita: VISITA, comercio: COMERCIO, degustacion: DEGUSTACION };
@@ -162,7 +162,7 @@ function labelOf(form, k) { return allFields(form).find((f) => f.k === k)?.label
 
 // ---------------------------------------------------------------- push / pull
 export async function syncAll() {
-  if (running || !isConfigured() || !navigator.onLine) return { skipped: true };
+  if (running || !isConfigured() || !navigator.onLine || getSettings().rol === 'tablero') return { skipped: true };
   running = true;
   emit({ running: true });
   let done = 0, failed = 0, lastError = null;
@@ -215,6 +215,7 @@ export async function pull() {
   }
   await db.putMany(incoming);
   if (j.parametros) await db.setMeta('params', j.parametros);
+  if (j.rol && j.rol !== getSettings().rol) saveSettings({ ...getSettings(), rol: j.rol }); // el rol lo define el Sheet
   if (j.pedidos) await db.setMeta('pedidos', j.pedidos);
   await db.setMeta('lastPull', Date.now());
   return { received: incoming.length };

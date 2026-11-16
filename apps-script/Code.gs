@@ -74,10 +74,10 @@ function configurar() {
   let us = ss.getSheetByName(HOJA_USUARIOS);
   if (!us) {
     us = ss.insertSheet(HOJA_USUARIOS);
-    us.appendRow(['Usuario', 'Código', 'Activo']);
+    us.appendRow(['Usuario', 'Código', 'Activo', 'Rol']);
     estiloEncabezado(us);
     us.getRange('A:B').setNumberFormat('@');
-    us.getRange('E1').setValue('Un usuario por fila. Activo: "no" para bloquearlo. El nombre se escribe en la app tal cual (sin importar mayúsculas).');
+    us.getRange('F1').setValue('Un usuario por fila. Activo: "no" para bloquearlo. Rol: "campo" (carga datos) o "tablero" (solo mira los tableros).');
   }
   const props = PropertiesService.getScriptProperties();
   if (!props.getProperty('TOKEN')) props.setProperty('TOKEN', generarClave());
@@ -118,10 +118,14 @@ function doPost(e) {
     if (!quien) return json({ ok: false, error: 'Usuario o código incorrecto' });
     switch (req.action) {
       case 'login':
-      case 'ping': return json({ ok: true, sheet: libro().getName(), user: quien.user });
-      case 'upsert': return json(upsert(req.sheet, req.id, req.row, quien));
-      case 'photo': return json(guardarFoto(req));
-      case 'pull': return json(pull());
+      case 'ping': return json({ ok: true, sheet: libro().getName(), user: quien.user, rol: quien.rol });
+      case 'upsert':
+        if (quien.rol === 'tablero') throw new Error('Este usuario es solo de consulta: no puede cargar datos.');
+        return json(upsert(req.sheet, req.id, req.row, quien));
+      case 'photo':
+        if (quien.rol === 'tablero') throw new Error('Este usuario es solo de consulta: no puede cargar datos.');
+        return json(guardarFoto(req));
+      case 'pull': { const r = pull(); r.rol = quien.rol; r.user = quien.user; return json(r); }
       default: return json({ ok: false, error: 'Acción desconocida' });
     }
   } catch (err) {
@@ -133,18 +137,19 @@ function norm(s) {
   return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
 }
 
-// Devuelve { user, admin } o null. La clave privada (TOKEN) es solo para administración.
+// Devuelve { user, admin, rol } o null. La clave privada (TOKEN) es solo para administración.
+// Rol (columna D de Usuarios): "campo" carga datos; "tablero" solo consulta (no puede cargar nada).
 function autenticar(req) {
   const token = PropertiesService.getScriptProperties().getProperty('TOKEN');
-  if (token && req.token === token) return { user: 'Administración', admin: true };
+  if (token && req.token === token) return { user: 'Administración', admin: true, rol: 'campo' };
   if (!req.user || req.pin === undefined || req.pin === '') return null;
   const sh = libro().getSheetByName(HOJA_USUARIOS);
   if (!sh || sh.getLastRow() < 2) return null;
-  const filas = sh.getRange(2, 1, sh.getLastRow() - 1, 3).getDisplayValues();
-  for (const [usuario, codigo, activo] of filas) {
+  const filas = sh.getRange(2, 1, sh.getLastRow() - 1, 4).getDisplayValues();
+  for (const [usuario, codigo, activo, rol] of filas) {
     if (!usuario) continue;
     if (norm(usuario) === norm(req.user) && String(codigo).trim() === String(req.pin).trim() && norm(activo) !== 'no') {
-      return { user: String(usuario).trim(), admin: false };
+      return { user: String(usuario).trim(), admin: false, rol: norm(rol) === 'tablero' ? 'tablero' : 'campo' };
     }
   }
   return null;

@@ -11,7 +11,9 @@ const nav = document.getElementById('nav');
 const user = () => getSettings().user || 'Encargado';
 const norm = (x) => String(x || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
 // Cada registro es de quien lo cargó; solo esa persona lo puede modificar.
-const esMio = (r) => !r.user || norm(r.user) === norm(user());
+// El rol "tablero" es solo de consulta: ve todo, no carga ni modifica nada.
+const soloLectura = () => getSettings().rol === 'tablero';
+const esMio = (r) => !soloLectura() && (!r.user || norm(r.user) === norm(user()));
 
 // ---------------------------------------------------------------- contexto compartido
 async function context() {
@@ -50,6 +52,13 @@ const routes = [
 async function router() {
   const hash = location.hash || '#/';
   if (!isConfigured()) return bienvenida();
+  buildNav();
+  // Usuario de consulta: el tablero es su inicio y no entra a ninguna pantalla de carga.
+  if (soloLectura() && (hash === '#/' || hash === '#' || /nueva|nuevo|editar|antes|durante|despues/.test(hash))) {
+    location.replace('#/tablero');
+    return;
+  }
+  root.classList.toggle('wide', soloLectura() && hash.startsWith('#/tablero'));
   for (const [re, fn] of routes) {
     const m = hash.match(re);
     if (m) {
@@ -120,7 +129,7 @@ function bienvenida() {
     msg.textContent = 'Verificando…';
     try {
       const r = await login(inp.value.trim(), pin.value.trim());
-      saveSettings({ user: r.user, pin: pin.value.trim() });
+      saveSettings({ user: r.user, pin: pin.value.trim(), rol: r.rol || 'campo' });
       // Antes de mostrar el inicio, trae todo lo que ya está en el Sheet (por si es un celular nuevo).
       msg.textContent = 'Trayendo tus datos…';
       await Promise.race([fullSync().catch(() => {}), new Promise((res) => setTimeout(res, 20000))]);
@@ -417,7 +426,7 @@ async function comercios() {
   root.append(topBar(), h('div', { class: 'enter' },
     h('p', { class: 'eyebrow mt-4' }, 'Maestro de cuentas'),
     h('div', { class: 'flex between' }, h('h1', { class: 'h1' }, 'Comercios'), h('span', { class: 'micro' }, ctx.comercioRecs.length)),
-    h('a', { class: 'btn btn-secondary btn-block mt-4', href: '#/comercio/nuevo' }, icon('plus'), 'Alta de comercio'),
+    soloLectura() ? null : h('a', { class: 'btn btn-secondary btn-block mt-4', href: '#/comercio/nuevo' }, icon('plus'), 'Alta de comercio'),
     h('div', { class: 'search mt-4' }, h('span', { html: icons.search }), q), chips, list));
 }
 
@@ -475,13 +484,13 @@ async function fichaComercio(id) {
       h('span', { class: 'tag' + (d.estado === 'Caída' ? ' red' : '') }, d.estado || 'Sin estado'),
       d.piloto === 'si' ? h('span', { class: 'tag' }, 'Piloto · ' + (d.piloto_grupo || '')) : null,
       d.exhibidor_n ? h('span', { class: 'tag' }, 'Exhibidor N° ' + d.exhibidor_n) : null, syncTag(rec)),
-    h('div', { class: 'btn-row mt-6' },
+    soloLectura() ? null : h('div', { class: 'btn-row mt-6' },
       h('button', { class: 'btn btn-primary', onclick: () => {
         if (getDraft('visita') && !confirm('Tenés una visita sin terminar. ¿Descartarla y empezar una en este comercio?')) return;
         clearDraft('visita'); sessionStorage.setItem('rush.preComercio', id); go('#/visita/nueva');
       } }, 'Visitar ahora', h('span', { class: 'arrow' }, icon('arrow'))),
       esMio(rec) ? h('a', { class: 'btn btn-secondary', href: `#/comercio/${id}/editar` }, 'Editar ficha') : null),
-    esMio(rec) ? null : h('p', { class: 'caption mt-3' }, `Ficha cargada por ${rec.user}. Solo esa persona la puede editar.`)));
+    esMio(rec) || soloLectura() ? null : h('p', { class: 'caption mt-3' }, `Ficha cargada por ${rec.user}. Solo esa persona la puede editar.`)));
 
   if (d.objetivo) root.append(h('div', { class: 'section' }, h('p', { class: 'eyebrow' }, 'Objetivo a 30 días'), h('div', { class: 'quote' }, d.objetivo)));
 
@@ -542,7 +551,7 @@ async function degustaciones() {
   root.append(topBar(), h('div', { class: 'enter' },
     h('p', { class: 'eyebrow mt-4' }, 'Antes · durante · a los 7 días'),
     h('h1', { class: 'h1' }, 'Degustaciones'),
-    h('a', { class: 'btn btn-primary btn-block mt-6', href: '#/degustacion/nueva' }, 'Nueva degustación', h('span', { class: 'arrow' }, icon('arrow'))),
+    soloLectura() ? null : h('a', { class: 'btn btn-primary btn-block mt-6', href: '#/degustacion/nueva' }, 'Nueva degustación', h('span', { class: 'arrow' }, icon('arrow'))),
     h('div', { class: 'mt-6' }, degs.length ? degs.map((d) => degRow(d, ctx)) : h('p', { class: 'caption' }, 'Todavía no hay degustaciones.'))));
 }
 
@@ -594,7 +603,7 @@ async function tablero() {
   root.append(topBar());
   const box = h('div');
   root.append(box);
-  await renderDashboard(box, await context());
+  await renderDashboard(box, await context(), { full: soloLectura() });
 }
 
 // ---------------------------------------------------------------- ajustes
@@ -610,25 +619,40 @@ async function ajustes() {
       h('div', { class: 'card' },
         h('div', { class: 'micro' }, 'Todo se guarda en'),
         h('div', { class: 'h3 mt-2' }, SHEET_NAME),
-        h('p', { class: 'caption mt-2' }, 'Es fijo y no se puede cambiar. Lo que cargás queda a tu nombre y nadie más lo puede modificar.')),
+        h('p', { class: 'caption mt-2' }, soloLectura()
+          ? 'Tu usuario es de consulta: ves todos los tableros y registros, pero no podés cargar ni modificar nada.'
+          : 'Es fijo y no se puede cambiar. Lo que cargás queda a tu nombre y nadie más lo puede modificar.')),
       h('div', { class: 'btn-row mt-4' },
         h('button', { class: 'btn btn-primary', onclick: async () => {
           status.textContent = 'Sincronizando…';
-          try { const x = await fullSync(); status.textContent = x.skipped ? 'Sin señal. Se sube solo cuando vuelva.' : `Listo. ${x.done || 0} subidos, ${x.received || 0} recibidos.${x.failed ? ` ${x.failed} con error: ${x.lastError}` : ''}`; updatePill(); }
+          try { const x = await fullSync(); status.textContent = x.skipped && !soloLectura() ? 'Sin señal. Se sube solo cuando vuelva.' : `Listo. ${x.done || 0} subidos, ${x.received || 0} recibidos.${x.failed ? ` ${x.failed} con error: ${x.lastError}` : ''}`; updatePill(); }
           catch (e) { status.textContent = 'No se pudo sincronizar: ' + e.message; }
         } }, icon('sync'), 'Sincronizar ahora')),
       status,
       h('p', { class: 'caption mt-3' }, `${pend} registros sin subir · última sincronización: ${lastSync ? fmtDateTime(lastSync) : 'nunca'}`)),
-    h('p', { class: 'caption mt-8' }, 'Rush · App de campo · v1.2')));
+    h('p', { class: 'caption mt-8' }, 'Rush · App de campo · v1.3')));
+}
+
+// ---------------------------------------------------------------- navegación según el rol
+let navRol = null;
+function buildNav() {
+  const rol = soloLectura() ? 'tablero' : 'campo';
+  if (navRol === rol) return;
+  navRol = rol;
+  nav.replaceChildren(rol === 'tablero'
+    ? h('div', { class: 'nav-in', style: { gridTemplateColumns: 'repeat(3, 1fr)' } },
+        h('a', { href: '#/tablero', 'data-k': 'tablero' }, icon('chart'), 'Tablero'),
+        h('a', { href: '#/comercios', 'data-k': 'comercios' }, icon('store'), 'Comercios'),
+        h('a', { href: '#/degustaciones', 'data-k': 'degust' }, icon('cup'), 'Degust.'))
+    : h('div', { class: 'nav-in' },
+        h('a', { href: '#/', 'data-k': 'home' }, icon('home'), 'Inicio'),
+        h('a', { href: '#/degustaciones', 'data-k': 'degust' }, icon('cup'), 'Degust.'),
+        h('a', { href: '#/comercios', 'data-k': 'comercios' }, icon('store'), 'Comercios'),
+        h('a', { href: '#/tablero', 'data-k': 'tablero' }, icon('chart'), 'Tablero')));
 }
 
 // ---------------------------------------------------------------- arranque
 async function boot() {
-  nav.replaceChildren(h('div', { class: 'nav-in' },
-    h('a', { href: '#/', 'data-k': 'home' }, icon('home'), 'Inicio'),
-    h('a', { href: '#/degustaciones', 'data-k': 'degust' }, icon('cup'), 'Degust.'),
-    h('a', { href: '#/comercios', 'data-k': 'comercios' }, icon('store'), 'Comercios'),
-    h('a', { href: '#/tablero', 'data-k': 'tablero' }, icon('chart'), 'Tablero')));
   await router();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   // Sincroniza al abrir, al volver la señal, al volver a la app y cada 5 minutos.

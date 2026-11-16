@@ -434,3 +434,26 @@ input[type="date"].input, input[type="time"].input { appearance: none; -webkit-a
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: 14px; }
 .kv dt { color: var(--text-muted); }
 .kv dd { margin: 0; color: var(--text-strong); text-align: right; overflow-wrap: anywhere; }
+
+/* ---------- Tablero completo (rol de consulta) */
+.resumen { margin: var(--space-2) 0 0; padding-left: 18px; color: var(--text-strong); font-size: 16px; line-height: 1.62; }
+.resumen li + li { margin-top: 6px; }
+.resumen li::marker { color: var(--rush-red); }
+.caption.hint { margin: calc(-1 * var(--space-1)) 0 var(--space-3); max-width: 560px; }
+.kpi .mide { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-subtle); }
+.delta { color: var(--text-label); margin-top: 4px; }
+.delta.peor { color: var(--text-primary); }
+.delta.peor::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; background: var(--rush-red); transform: rotate(45deg) translateY(-1px); }
+.tabla { padding: 4px var(--space-4); }
+.trow-h, .trow-r { display: grid; grid-template-columns: 1.4fr repeat(4, 1fr); gap: 8px; padding: 10px 0; align-items: center; font-variant-numeric: tabular-nums; }
+.trow-h { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-muted); border-bottom: 1px solid var(--border-subtle); }
+.trow-r { font-size: 15px; color: var(--text-label); }
+.trow-r + .trow-r { border-top: 1px solid var(--border-subtle); }
+.trow-h span:not(:first-child), .trow-r span:not(:first-child) { text-align: right; }
+.dash-cols > div > .section:first-child { margin-top: var(--space-8); }
+@media (min-width: 900px) {
+  .app.wide { max-width: 1120px; }
+  .app.wide .kpis.k4 { grid-template-columns: repeat(4, 1fr); }
+  .app.wide .dash-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--space-8); align-items: start; }
+  .app.wide .nav-in { max-width: 1120px; }
+}
