@@ -135,9 +135,11 @@ export function runWizard(root, opts) {
 // ---------------------------------------------------------------- campos
 const seg = (label, pressed, onclick, cls = '') =>
   h('button', { type: 'button', class: 'seg-opt ' + cls, 'aria-pressed': String(!!pressed), onclick }, label);
-const optBtn = (label, pressed, onclick, multi) =>
-  h('button', { type: 'button', class: 'seg-opt' + (multi ? ' multi' : ''), 'aria-pressed': String(!!pressed), onclick },
-    h('span', { class: 'mark', html: icons.check }), h('span', {}, label));
+// desc: explicación corta debajo de la opción, en lenguaje simple
+const optBtn = (label, pressed, onclick, multi, desc) =>
+  h('button', { type: 'button', class: 'seg-opt' + (multi ? ' multi' : '') + (desc ? ' has-desc' : ''), 'aria-pressed': String(!!pressed), onclick },
+    h('span', { class: 'mark', html: icons.check }),
+    h('span', { class: 'opt-text' }, h('span', { class: 'opt-label' }, label), desc ? h('span', { class: 'opt-desc' }, desc) : null));
 
 function textInput(f, v, set, type = 'text', extra = {}) {
   const inp = h('input', { class: 'input', id: 'f-' + f.k, type, value: v ?? '', maxlength: f.max, autocomplete: 'off', ...extra });
@@ -180,8 +182,8 @@ const FIELD = {
   yesno: (f, v, set) => h('div', { class: 'seg', role: 'group' },
     seg('Sí', v === 'si', () => set(v === 'si' ? undefined : 'si')),
     seg('No', v === 'no', () => set(v === 'no' ? undefined : 'no'))),
-  single: (f, v, set) => h('div', { class: 'opts' + (f.opts.length <= 3 && f.opts.every((o) => o.length < 16) ? ' wrap' : ''), role: 'radiogroup' },
-    f.opts.map((o) => optBtn(o, v === o, () => set(v === o ? undefined : o)))),
+  single: (f, v, set) => h('div', { class: 'opts' + (!f.desc && f.opts.length <= 3 && f.opts.every((o) => o.length < 16) ? ' wrap' : ''), role: 'radiogroup' },
+    f.opts.map((o) => optBtn(f.labels?.[o] || o, v === o, () => set(v === o ? undefined : o), false, f.desc?.[o]))),
   multi: (f, v, set) => {
     const cur = Array.isArray(v) ? v : [];
     return h('div', { class: 'opts' }, f.opts.map((o) => optBtn(o, cur.includes(o), () => {
@@ -338,13 +340,17 @@ function comercioPicker(f, v, set, opts) {
         ...items.map((c) => h('button', { class: 'row-link', onclick: () => { set(c.id); close(); } },
           h('div', { class: 'row-main' }, h('div', { class: 'row-title' }, c.nombre), h('div', { class: 'row-sub' }, [c.zona, c.ciudad].filter(Boolean).join(' · '))),
           c.id === v ? h('span', { class: 'tag red' }, 'Elegido') : null)),
-        items.length ? '' : h('p', { class: 'caption' }, list.length ? 'No hay coincidencias.' : 'Todavía no hay comercios cargados.'),
-        h('button', { class: 'btn btn-secondary btn-block mt-4', onclick: () => { close(); opts.ctx.newComercio?.(); } }, icon('plus'), 'Dar de alta un comercio nuevo'));
+        items.length ? '' : h('p', { class: 'caption' }, list.length ? 'No hay coincidencias. Si es nuevo, dalo de alta con el botón de arriba.' : 'Todavía no hay comercios cargados. Dalo de alta con el botón de arriba.'));
     };
     q.addEventListener('input', draw);
     draw();
     setTimeout(() => q.focus(), 100);
-    return h('div', {}, h('p', { class: 'eyebrow' }, 'Elegí el comercio'), h('div', { class: 'search' }, h('span', { html: icons.search }), q), res);
+    // El alta va arriba y resaltada: es lo primero que hay que ver si el comercio no está en la lista.
+    return h('div', {},
+      h('p', { class: 'eyebrow' }, 'Elegí el comercio'),
+      h('button', { class: 'btn btn-primary btn-block', onclick: () => { close(); opts.ctx.newComercio?.(); } }, icon('plus'), 'Dar de alta un comercio nuevo'),
+      h('p', { class: 'caption mt-2' }, '¿Es la primera vez que lo visitás? Dalo de alta con este botón. Si ya lo visitaste antes, buscalo abajo.'),
+      h('div', { class: 'search mt-4' }, h('span', { html: icons.search }), q), res);
   });
   return h('button', { type: 'button', class: 'row-link', id: 'f-' + f.k, onclick: open },
     h('div', { class: 'row-main' },

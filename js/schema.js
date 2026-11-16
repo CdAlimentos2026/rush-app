@@ -11,6 +11,23 @@ export const TIPOS_PDV = [
   'Gimnasio', 'Restaurante / cafetería', 'Mayorista con capilaridad',
 ];
 export const ESTADOS = ['Nueva', 'Activa', 'Recurrente', 'Creciendo', 'Caída'];
+// Qué significa cada escalón, en palabras simples (escalera de la cuenta, lección 3.1)
+export const ESTADOS_DESC = {
+  'Nueva': 'Hizo su primer pedido de Rush (o está por hacerlo).',
+  'Activa': 'Ya volvió a pedir: tiene 2 pedidos o más.',
+  'Recurrente': 'Pide Rush seguido, todos los meses.',
+  'Creciendo': 'Pide seguido y cada vez más cantidad.',
+  'Caída': 'Pedía Rush y dejó de pedir.',
+};
+export const TIPOS_PDV_DESC = {
+  'Tienda / minimarket': 'Almacén o tienda de barrio: venta del día a día.',
+  'Especialista en bebidas': 'Licorería o negocio que vende sobre todo bebidas.',
+  'Punto nocturno': 'Bar, boliche o karaoke: la gente compra de noche.',
+  'Gimnasio': 'Gimnasio o club deportivo.',
+  'Restaurante / cafetería': 'Lugar donde la gente come o toma algo sentada.',
+  'Mayorista con capilaridad': 'Mayorista que le vende a muchas tiendas chicas.',
+  'Otro': 'Otro tipo de negocio. Contá cuál abajo.',
+};
 
 // ---------------------------------------------------------------- VISITA
 export const VISITA = {
@@ -22,8 +39,16 @@ export const VISITA = {
       eyebrow: 'Llegás', title: '¿Dónde estás?',
       fields: [
         { k: 'comercio', label: '¿Qué comercio?', type: 'list', src: 'comercios', req: true },
-        { k: 'tipo', label: 'Tipo de visita', type: 'single', req: true,
-          opts: ['Piloto (semanal)', 'Relevamiento de ruta', 'Control de ejecución', 'Entrega de premio', 'Introducción al comerciante'] },
+        { k: 'tipo', label: '¿Para qué es esta visita?', type: 'single', req: true,
+          opts: ['Piloto (semanal)', 'Relevamiento de ruta', 'Control de ejecución', 'Entrega de premio', 'Introducción al comerciante'],
+          labels: { 'Piloto (semanal)': 'Prueba piloto', 'Relevamiento de ruta': 'Visita de recorrido', 'Control de ejecución': 'Volver a revisar algo', 'Entrega de premio': 'Entregar un premio', 'Introducción al comerciante': 'Primera visita' },
+          desc: {
+            'Piloto (semanal)': 'Es uno de los comercios de la prueba de 90 días. Se visita una vez por semana.',
+            'Relevamiento de ruta': 'La visita de siempre: mirar cómo está Rush en el comercio y anotarlo.',
+            'Control de ejecución': 'Volvés para ver si se cumplió algo que se acordó: heladera, precio, material.',
+            'Entrega de premio': 'Vas a entregarle un premio al comerciante.',
+            'Introducción al comerciante': 'Es la primera vez: vas a presentarle Rush a este comercio.',
+          } },
         { k: 'foto_entrada', label: 'Foto de entrada (antes de tocar nada)', type: 'photo', req: true },
       ],
     },
@@ -43,9 +68,11 @@ export const VISITA = {
         { k: 'deposito_visible', label: '¿Viste el depósito?', type: 'yesno', req: true,
           hint: 'Si no lo viste, contá solo lo que hay en frío.' },
         { k: 'stock_alcanza', label: '¿Hay stock para llegar a la próxima visita?', type: 'yesno', req: true, snap: no },
-        { k: 'quiebre', label: '¿Faltaba producto?', type: 'single', req: true,
+        { k: 'quiebre', label: '¿Le faltaba Rush al comercio?', type: 'single', req: true,
+          labels: { 'No': 'No, tenía de las dos' },
           opts: ['No', 'Faltaba Original', 'Faltaba ZERO', 'Faltaban las dos'], snap: (v) => v && v !== 'No' },
-        { k: 'quiebre_dias', label: '¿Desde hace cuántos días? Preguntá "¿desde cuándo no tiene?"', type: 'number',
+        { k: 'quiebre_dias', label: '¿Hace cuántos días que no tiene Rush?', type: 'number',
+          hint: 'Preguntale al comerciante: «¿Desde cuándo no tenés Rush?». Anotá la cantidad de días (por ejemplo, 3).',
           req: true, when: (d) => d.quiebre && d.quiebre !== 'No' },
         { k: 'latas_vencidas', label: '¿Cuántas latas vencidas retiraste?', type: 'number', req: true,
           hint: '0 si ninguna.', snap: (v) => Number(v) > 0 },
@@ -67,8 +94,9 @@ export const VISITA = {
         { k: 'material_ok', label: '¿Cenefa o marco íntegro y limpio?', type: 'yesno', req: true, snap: no,
           when: (d) => Array.isArray(d.material) && d.material.length && !d.material.includes('Ninguno') },
         { k: 'segunda_ubicacion', label: '¿Segunda ubicación?', type: 'single', opts: ['Sí', 'No', 'No corresponde'], req: true },
-        { k: 'exhibidor_numerado', label: '¿Exhibidor numerado en el mostrador?', type: 'single', opts: ['Sí', 'No', 'No tiene'], req: true,
-          hint: 'Si no tiene y corresponde, instalalo y asignale N° en la ficha del comercio.' },
+        { k: 'exhibidor_numerado', label: '¿El exhibidor de Rush está en el mostrador?', type: 'single', opts: ['Sí', 'No', 'No tiene'], req: true,
+          labels: { 'Sí': 'Sí, está en el mostrador', 'No': 'Tiene, pero no está en el mostrador', 'No tiene': 'No tiene exhibidor' },
+          hint: 'El exhibidor es el soporte de Rush que va sobre el mostrador. Cada uno tiene un número pegado.' },
         { k: 'material_vencido_retirado', label: '¿Material vencido o roto retirado?', type: 'yesno', req: true },
         { k: 'pack_ok', label: '¿Pack en depósito íntegro y seco?', type: 'single', opts: ['Sí', 'No', 'No hay depósito'], req: true,
           snap: (v) => v === 'No' },
@@ -83,14 +111,23 @@ export const VISITA = {
         { k: 'comp_frente', label: 'Si Rush no está adelante, ¿qué marca está?', type: 'list', src: 'marcas',
           when: (d) => d.adelante === 'no', snap: (v) => !!v },
         { k: 'comp_promo', label: '¿La competencia tiene alguna promoción a la vista?', type: 'yesno', req: true, snap: yes },
-        { k: 'comp_promo_desc', label: 'Marca, mecánica y hasta cuándo', type: 'text', req: true, when: (d) => d.comp_promo === 'si' },
+        { k: 'comp_promo_desc', label: 'Contá la promo de la otra marca', type: 'text', req: true, when: (d) => d.comp_promo === 'si',
+          hint: 'Qué marca, qué ofrece y hasta cuándo. Ejemplo: Monster, 2 latas por Bs 25, hasta fin de mes.' },
       ],
     },
     {
       eyebrow: 'Ahora sí, preguntá', title: 'El dueño',
       fields: [
-        { k: 'demanda', label: '¿La gente la pide o ustedes la ofrecen?', type: 'single', req: true,
-          opts: ['La piden', 'La ofrecemos', 'Mitad y mitad', 'Este mes ya pregunté'] },
+        { k: 'demanda', label: 'Ahora sobre Rush: ¿los clientes piden Rush o el comercio se la ofrece?', type: 'single', req: true,
+          hint: 'Preguntale al comerciante. Esta pregunta es sobre Rush, no sobre la competencia.',
+          opts: ['La piden', 'La ofrecemos', 'Mitad y mitad', 'Este mes ya pregunté'],
+          labels: { 'La piden': 'Los clientes la piden', 'La ofrecemos': 'El comercio la ofrece' },
+          desc: {
+            'La piden': 'La gente entra y pide Rush por su nombre.',
+            'La ofrecemos': 'Los clientes no la conocen: el comerciante la recomienda.',
+            'Mitad y mitad': 'Pasan las dos cosas.',
+            'Este mes ya pregunté': 'Ya lo preguntaste en otra visita este mes.',
+          } },
         { k: 'frase_dueno', label: 'Una frase del dueño, si dijo algo que importa', type: 'text', max: 140 },
         { k: 'piloto_vendedor', label: '¿Pasó el vendedor esta semana?', type: 'yesno', req: true, when: esPiloto, group: 'Piloto' },
         { k: 'piloto_pendiente', label: '¿Le quedó algo pendiente con el vendedor?', type: 'text', when: esPiloto },
@@ -101,7 +138,9 @@ export const VISITA = {
         { k: 'obj_texto', label: 'La objeción, textual, como la dijo', type: 'textarea', req: true, when: hayObjecion },
         { k: 'obj_vendedor', label: 'Qué le respondió el vendedor (según el comerciante)', type: 'textarea', when: hayObjecion },
         { k: 'obj_yo', label: 'Qué le respondiste vos hoy', type: 'textarea', req: true, when: hayObjecion },
-        { k: 'obj_resultado', label: 'Resultado', type: 'single', opts: ['Abrió', 'Fecha de vuelta', 'No'], req: true, when: hayObjecion },
+        { k: 'obj_resultado', label: '¿Cómo terminó la charla?', type: 'single', opts: ['Abrió', 'Fecha de vuelta', 'No'], req: true, when: hayObjecion,
+          labels: { 'Abrió': 'Aceptó', 'Fecha de vuelta': 'Quedamos en volver', 'No': 'No aceptó' },
+          desc: { 'Abrió': 'Se convenció: va a comprar o a probar Rush.', 'Fecha de vuelta': 'No dijo que sí todavía. Acordaron otro día para volver.', 'No': 'Siguió diciendo que no.' } },
         { k: 'obj_conocida', label: '¿Es una de las diez objeciones conocidas?', type: 'single', opts: ['Conocida (de las 10)', 'Nueva'], req: true, when: hayObjecion },
       ],
     },
@@ -109,11 +148,10 @@ export const VISITA = {
       eyebrow: 'Si corresponde', title: 'Premio',
       fields: [
         { k: 'premio', label: '¿Hoy se entregó un premio?', type: 'yesno', req: true },
-        { k: 'premio_nivel', label: 'Nivel que lo habilita', type: 'single', opts: ['Nueva', 'Activa', 'Recurrente'], req: true, when: hayPremio },
+        { k: 'premio_nivel', label: '¿En qué escalón está el comercio?', type: 'single', opts: ['Nueva', 'Activa', 'Recurrente'], req: true, when: hayPremio,
+          hint: 'El premio depende de cuánto viene comprando el comercio.', desc: ESTADOS_DESC },
         { k: 'premio_beneficio', label: 'Beneficio entregado', type: 'list', src: 'beneficios', req: true, when: hayPremio },
         { k: 'premio_foto', label: 'Foto del premio entregado', type: 'photo', req: true, when: hayPremio },
-        { k: 'premio_conformidad', label: 'Conformidad del comerciante', type: 'consent', req: true, when: hayPremio,
-          hint: 'Pasale el celular y que toque para confirmar.' },
       ],
     },
     {
@@ -125,7 +163,6 @@ export const VISITA = {
           hint: 'Va al informe semanal.' },
         { k: 'pendiente', label: 'Pendiente para la próxima visita', type: 'text' },
         { k: 'proxima_visita', label: 'Próxima visita', type: 'date', req: true },
-        { k: 'foto_salida', label: 'Foto de salida (después)', type: 'photo', req: true },
       ],
     },
   ],
@@ -155,24 +192,28 @@ export const COMERCIO = {
     {
       eyebrow: 'Alta', title: 'El comercio',
       fields: [
+        { k: 'gps', label: 'Ubicación del comercio', type: 'gps',
+          hint: 'Parate en la puerta del comercio y tocá el botón. Si el GPS funciona, no hace falta escribir la dirección.' },
         { k: 'nombre', label: 'Nombre del comercio', type: 'text', req: true },
-        { k: 'zona', label: 'Zona / barrio', type: 'text', req: true },
+        { k: 'zona', label: 'Zona o barrio', type: 'text', req: sinGps },
         { k: 'ciudad', label: 'Ciudad', type: 'single', opts: ['Santa Cruz', 'Trinidad', 'Otra'], req: true },
-        { k: 'direccion', label: 'Dirección', type: 'text', req: true },
-        { k: 'gps', label: 'Ubicación', type: 'gps' },
+        { k: 'direccion', label: 'Dirección', type: 'text', req: sinGps,
+          hint: 'Obligatoria solo si no se pudo tomar la ubicación con el GPS.' },
         { k: 'decisor', label: 'Quién decide las compras (nombre y rol)', type: 'text', req: true },
         { k: 'whatsapp', label: 'Contacto / WhatsApp', type: 'tel', req: true },
         { k: 'distribuidor', label: 'Distribuidor que entrega', type: 'text', req: true },
         { k: 'vendedor', label: 'Vendedor responsable', type: 'list', src: 'vendedores', req: true },
-        { k: 'tipo_pdv', label: 'Tipo de PDV', type: 'single', opts: TIPOS_PDV, req: true,
-          hint: 'Se clasifica por mecanismo, no por rubro.' },
+        { k: 'tipo_pdv', label: '¿Qué tipo de negocio es?', type: 'single', opts: [...TIPOS_PDV, 'Otro'], req: true,
+          hint: 'Elegí el que más se parece.', desc: TIPOS_PDV_DESC },
+        { k: 'tipo_pdv_otro', label: '¿Qué tipo de negocio es?', type: 'text', req: true, when: (d) => d.tipo_pdv === 'Otro' },
       ],
     },
     {
       eyebrow: 'Rutina', title: 'Cómo se visita',
       fields: [
         { k: 'horario', label: 'Horario acordado para visitar', type: 'time', req: true },
-        { k: 'frecuencia', label: 'Frecuencia (cada cuántos días)', type: 'number', req: true },
+        { k: 'frecuencia', label: '¿Cada cuántos días vas a visitar este comercio?', type: 'number', req: true,
+          hint: 'Ejemplo: 7 = una vez por semana · 14 = cada dos semanas.' },
         { k: 'dia', label: 'Día habitual', type: 'single', opts: ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'], req: true },
         { k: 'como_pide', label: 'Cómo pide', type: 'single', opts: ['Visita', 'WhatsApp', 'Otro'], req: true },
       ],
@@ -180,15 +221,15 @@ export const COMERCIO = {
     {
       eyebrow: 'Escalera', title: 'Rush en esta cuenta',
       fields: [
-        { k: 'estado', label: 'Estado de la cuenta', type: 'single', opts: ESTADOS, req: true,
-          hint: 'Cuando entren los pedidos de la embotelladora, la app lo va a sugerir y vos lo validás.' },
+        { k: 'estado', label: '¿Cómo viene comprando Rush este comercio?', type: 'single', opts: ESTADOS, req: true,
+          labels: { 'Creciendo': 'En crecimiento' }, desc: ESTADOS_DESC },
         { k: 'motivo_caida', label: 'Motivo si cayó (preguntado, no supuesto)', type: 'single', req: true, when: caida,
           opts: ['No rotó', 'Venció', 'Faltó visita', 'Faltó stock', 'Subió el precio', 'Entró competencia', 'Perdió espacio frío', 'Cambió de dueño', 'Otro'] },
         { k: 'ultimo_pedido', label: 'Fecha del último pedido', type: 'date', req: true, when: caida },
         { k: 'motivo_real', label: 'Motivo real de no recompra, con sus palabras', type: 'text', req: true, when: caida },
         { k: 'frase_comerciante', label: 'Frase que usa el comerciante para ofrecerla', type: 'text' },
-        { k: 'objetivo', label: 'Qué querés que pase con esta cuenta en los próximos 30 días', type: 'text', req: true,
-          hint: 'Una línea concreta.' },
+        { k: 'objetivo', label: 'Tu meta con este comercio para el próximo mes', type: 'text', req: true,
+          hint: 'Esto es para vos: no se lo preguntes al comerciante. Ejemplo: que tenga Rush siempre fría y adelante.' },
       ],
     },
     {
@@ -205,16 +246,21 @@ export const COMERCIO = {
       ],
     },
     {
-      eyebrow: 'Premios y piloto', title: 'Programa',
+      eyebrow: 'Exhibidor y prueba piloto', title: 'Programa',
       fields: [
-        { k: 'exhibidor_n', label: 'N° de exhibidor asignado', type: 'text', hint: 'Para el sorteo mensual. Se asigna una sola vez.' },
-        { k: 'piloto', label: '¿Está en la prueba piloto de 90 días?', type: 'yesno', req: true },
+        { k: 'tiene_exhibidor', label: '¿El comercio tiene un exhibidor de Rush?', type: 'yesno', req: true,
+          hint: 'El exhibidor es el soporte de Rush que va sobre el mostrador.' },
+        { k: 'exhibidor_n', label: 'Número del exhibidor', type: 'text', req: true, when: (d) => d.tiene_exhibidor === 'si',
+          hint: 'Cada exhibidor tiene un número pegado. Con ese número el comercio participa del sorteo mensual de premios.' },
+        { k: 'piloto', label: '¿Este comercio está en la prueba piloto de 90 días?', type: 'yesno', req: true,
+          hint: 'Son los 15 comercios elegidos para la prueba. Si no sabés, poné No.' },
         { k: 'piloto_grupo', label: 'Grupo del piloto', type: 'single', opts: ['Nuevo', 'Activo', 'Caído'], req: true, when: (d) => d.piloto === 'si' },
       ],
     },
   ],
 };
 function caida(d) { return d.estado === 'Caída'; }
+function sinGps(d) { return !(d.gps && d.gps.lat); }
 
 // ---------------------------------------------------------------- DEGUSTACION
 // Una degustación se carga en tres momentos sobre el mismo registro.

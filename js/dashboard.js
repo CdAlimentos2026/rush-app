@@ -264,9 +264,9 @@ export async function renderDashboard(box, ctx, opts = {}) {
       full && 'Conversión: de cada 100 personas que probaron, cuántas compraron. Post-activación: si es mayor a 1×, el comercio vendió más la semana después de la degustación.') : null;
 
     const objSec = objs.length ? section('Objeciones de los comerciantes', h('div', {},
-      h('div', { class: 'kpis' }, kpi('Contadas', objs.length, `${M.abrio ?? 0}% terminó en "abrió"`), kpi('Nuevas', nuevas.length, 'Van a la revisión mensual', nuevas.length > 0)),
+      h('div', { class: 'kpis' }, kpi('Contadas', objs.length, `${M.abrio ?? 0}% terminó en "aceptó"`), kpi('Nuevas', nuevas.length, 'Van a la revisión mensual', nuevas.length > 0)),
       nuevas.length ? h('div', { class: 'card mt-3' }, nuevas.slice(0, full ? 10 : 5).map((v) => h('div', { class: 'quote' }, v.data.obj_texto, h('div', { class: 'caption' }, nombreC(v.data.comercio, v.data))))) : null),
-      full && 'Los "no" o trabas que contaron los comerciantes, y cuántas se pudieron destrabar.') : null;
+      full && 'Los "no" o trabas que contaron los comerciantes, y en cuántas el comerciante terminó aceptando.') : null;
 
     const premiosSec = premios.length ? section('Premios entregados', h('div', { class: 'card bars' }, premios.map(([k, n]) => bar(k, n, premios[0][1], String(n))))) : null;
 

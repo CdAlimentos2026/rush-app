@@ -374,6 +374,7 @@ function valueRow(f, v, ctx) {
   let out;
   switch (f.type) {
     case 'yesno': out = v === 'si' ? 'Sí' : 'No'; break;
+    case 'single': out = f.labels?.[v] || v; break;
     case 'check': out = v ? 'Sí' : 'No'; break;
     case 'consent': out = 'Confirmada ' + new Date(v).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' }); break;
     case 'multi': out = v.join(', '); break;
@@ -480,7 +481,7 @@ async function fichaComercio(id) {
 
   root.append(topBar(), h('div', { class: 'enter' },
     h('a', { class: 'btn btn-tertiary', href: '#/comercios', style: { paddingLeft: 0 } }, icon('back'), 'Comercios'),
-    h('p', { class: 'eyebrow mt-4' }, [d.tipo_pdv, d.zona].filter(Boolean).join(' · ')),
+    h('p', { class: 'eyebrow mt-4' }, [d.tipo_pdv === 'Otro' ? d.tipo_pdv_otro : d.tipo_pdv, d.zona].filter(Boolean).join(' · ')),
     h('h1', { class: 'h1' }, d.nombre),
     h('div', { class: 'flex mt-3', style: { flexWrap: 'wrap', gap: '6px' } },
       h('span', { class: 'tag' + (d.estado === 'Caída' ? ' red' : '') }, d.estado || 'Sin estado'),

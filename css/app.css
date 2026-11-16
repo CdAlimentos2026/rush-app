@@ -457,3 +457,10 @@ input[type="date"].input, input[type="time"].input { appearance: none; -webkit-a
   .app.wide .dash-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--space-8); align-items: start; }
   .app.wide .nav-in { max-width: 1120px; }
 }
+
+/* Opciones con explicación */
+.seg-opt .opt-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.seg-opt .opt-desc { font-size: 13px; font-weight: 400; line-height: 1.4; color: var(--text-muted); }
+.seg-opt[aria-pressed="true"] .opt-desc { color: var(--text-label); }
+.seg-opt.has-desc { align-items: flex-start; padding-top: 14px; padding-bottom: 14px; }
+.seg-opt.has-desc .mark { margin-top: 1px; }

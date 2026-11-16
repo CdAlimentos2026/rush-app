@@ -1,7 +1,7 @@
 // Service worker: deja la app abierta sin señal. Subí VERSION cuando cambies archivos.
-const VERSION = 'rush-v11';
+const VERSION = 'rush-v12';
 const SHELL = [
-  './', 'index.html', 'manifest.webmanifest', 'css/app.css?v=11', 'js/app.js?v=11',
+  './', 'index.html', 'manifest.webmanifest', 'css/app.css?v=12', 'js/app.js?v=12',
   'js/app.js', 'js/db.js', 'js/ui.js', 'js/form.js', 'js/schema.js', 'js/sync.js', 'js/dashboard.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png',
 ];
