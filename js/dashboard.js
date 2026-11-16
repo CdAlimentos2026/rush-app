@@ -85,7 +85,9 @@ export async function renderDashboard(box, ctx, opts = {}) {
     const degs = dAll.filter((d) => enRango(d.data.fecha, R.from, R.to));
     const p = ctx.params;
     const M = metricas(vis, degs, p);
-    const P = R.pFrom ? metricas(vAll.filter((v) => enRango(v.data.fecha, R.pFrom, R.pTo)), dAll.filter((d) => enRango(d.data.fecha, R.pFrom, R.pTo)), p) : null;
+    let P = R.pFrom ? metricas(vAll.filter((v) => enRango(v.data.fecha, R.pFrom, R.pTo)), dAll.filter((d) => enRango(d.data.fecha, R.pFrom, R.pTo)), p) : null;
+    const sinAnterior = !!(P && !P.visitas && !P.degs);
+    if (sinAnterior) P = null; // se avisa una sola vez arriba, no en cada tarjeta
 
     // última visita por comercio (sobre todo el historial)
     const last = {};
@@ -119,7 +121,7 @@ export async function renderDashboard(box, ctx, opts = {}) {
       const d = lv.data;
       const atraso = daysBetween(d.fecha, hoy) - freq;
       if (atraso > 0) alerts.push({ w: 3 + Math.min(atraso, 10) / 10, t: `${nombre}: visita vencida hace ${atraso} ${atraso === 1 ? 'día' : 'días'}`, s: `Se visita cada ${freq} días. Última: ${fmtDate(d.fecha)}${lv.user ? ' (' + lv.user + ')' : ''}.`, href });
-      if (d.quiebre && d.quiebre !== 'No' && (num(d.quiebre_dias) ?? 0) >= maxQ) alerts.push({ w: 5, t: `${nombre}: ${d.quiebre.toLowerCase()} hace ${d.quiebre_dias} días`, s: `Relevado el ${fmtDate(d.fecha)}.`, href, snaps: lv.snaps?.quiebre });
+      if (d.quiebre && d.quiebre !== 'No' && (num(d.quiebre_dias) ?? 0) >= maxQ) alerts.push({ w: 5, t: `${nombre}: ${minus(d.quiebre)} hace ${d.quiebre_dias} días`, s: `Relevado el ${fmtDate(d.fecha)}.`, href, snaps: lv.snaps?.quiebre });
       if (disponibilidad(d) === false) {
         const fallas = [d.en_frio === 'no' && 'no está en frío', d.adelante === 'no' && 'no está adelante', d.stock_alcanza === 'no' && 'no alcanza el stock', d.precio_visible === 'no' && 'precio no visible'].filter(Boolean);
         alerts.push({ w: 4, t: `${nombre}: Rush no está bien exhibido`, s: fallas.join(' · ') + (d.comp_frente ? ` · al frente: ${d.comp_frente}` : ''), href,
@@ -177,7 +179,7 @@ export async function renderDashboard(box, ctx, opts = {}) {
       const prob = [
         !lv && 'sin visitas',
         disp === false && 'mal exhibido',
-        d.quiebre && d.quiebre !== 'No' && d.quiebre.toLowerCase(),
+        d.quiebre && d.quiebre !== 'No' && minus(d.quiebre),
         atraso > 0 && `visita vencida ${atraso} d`,
         c.data.estado === 'Caída' && 'cuenta caída',
       ].filter(Boolean);
@@ -189,7 +191,7 @@ export async function renderDashboard(box, ctx, opts = {}) {
     if (full && M.visitas) {
       resumen.push(`Se hicieron ${M.visitas} ${M.visitas === 1 ? 'visita' : 'visitas'} a ${M.comercios} ${M.comercios === 1 ? 'comercio' : 'comercios'}${persona !== 'Todos' ? ` (${persona})` : ''}.`);
       if (M.disp !== null) resumen.push(`En ${M.dispOk} de ${M.dispN} visitas Rush estaba bien exhibido: en la heladera, adelante, con stock y con precio a la vista (${M.disp}%).`);
-      if (preguntas.length && preguntas[0].v > 0) resumen.push(`Lo que más falla: "${preguntas[0].l.toLowerCase()}", que no se cumplió en el ${preguntas[0].v}% de las visitas.`);
+      if (preguntas.length && preguntas[0].v > 0) resumen.push(`Lo que más falla: "${preguntas[0].l}", que no se cumplió en el ${preguntas[0].v}% de las visitas.`);
       if (M.quiebres) resumen.push(`Hubo faltante de producto en ${M.quiebres} ${M.quiebres === 1 ? 'visita' : 'visitas'}${M.diasQuiebre !== null ? `, con ${fmtN(M.diasQuiebre)} días sin producto en promedio` : ''}.`);
       if (comp.length) resumen.push(`Cuando Rush no está adelante, la marca que ocupa el frente es sobre todo ${comp[0][0]}.`);
       if (M.degs) resumen.push(`${M.degs} ${M.degs === 1 ? 'degustación' : 'degustaciones'}: ${M.degust} latas probadas y ${M.compras} compras (${M.conversion ?? '—'}% de conversión).`);
@@ -203,7 +205,8 @@ export async function renderDashboard(box, ctx, opts = {}) {
       h('h1', { class: 'h1' }, 'Cómo viene Rush'),
       h('div', { class: 'filters mt-4' }, Object.entries(PERIODOS).map(([k, l]) => chip(l, periodo === k, () => { periodo = k; saveSettings({ ...getSettings(), periodo }); draw(); }))),
       ciudades.length > 2 ? h('div', { class: 'filters mt-2' }, ciudades.map((c) => chip(c, ciudad === c, () => { ciudad = c; saveSettings({ ...getSettings(), ciudad }); draw(); }))) : null,
-      full && personas.length > 2 ? h('div', { class: 'filters mt-2' }, personas.map((u) => chip(u, persona === u, () => { persona = u; saveSettings({ ...getSettings(), persona }); draw(); }))) : null);
+      full && personas.length > 2 ? h('div', { class: 'filters mt-2' }, personas.map((u) => chip(u, persona === u, () => { persona = u; saveSettings({ ...getSettings(), persona }); draw(); }))) : null,
+      full && sinAnterior ? h('p', { class: 'caption mt-3' }, `Todavía no hay datos de ${ANTERIOR[periodo]} para comparar. Las flechas ▲▼ van a aparecer cuando los haya.`) : null);
 
     const vacio = !visitasAll.length && !degsAll.length
       ? h('div', { class: 'card empty section' }, h('div', { class: 'h3' }, 'Todavía no hay datos'),
@@ -312,6 +315,7 @@ function count(arr) {
   for (const x of arr) m[x] = (m[x] || 0) + 1;
   return Object.entries(m).sort((a, b) => b[1] - a[1]);
 }
+const minus = (t) => String(t || '').replace(/^\S/, (c) => c.toLowerCase()); // "Faltaba ZERO" → "faltaba ZERO"
 const fmtPct = (v) => (v === null || v === undefined ? '—' : v + '%');
 const chip = (l, on, onclick) => h('button', { class: 'seg-opt', style: { minHeight: '40px', padding: '8px 14px', flex: 'none' }, 'aria-pressed': String(on), onclick }, l);
 function section(title, content, hint) {
