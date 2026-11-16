@@ -210,7 +210,7 @@ export async function pull() {
   for (const r of j.records || []) {
     const mine = local[r.id];
     if (mine && mine._sync !== 'ok') continue; // lo local sin subir manda
-    if (mine && (mine.updatedAt || 0) > (r.updatedAt || 0)) continue;
+    if (mine && (mine.updatedAt || 0) >= (r.updatedAt || 0)) continue; // ya lo tengo igual o más nuevo
     incoming.push({ ...r, _sync: 'ok' });
   }
   await db.putMany(incoming);

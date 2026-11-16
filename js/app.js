@@ -121,7 +121,10 @@ function bienvenida() {
     try {
       const r = await login(inp.value.trim(), pin.value.trim());
       saveSettings({ user: r.user, pin: pin.value.trim() });
-      fullSync().catch(() => {}).finally(() => updatePill());
+      // Antes de mostrar el inicio, trae todo lo que ya está en el Sheet (por si es un celular nuevo).
+      msg.textContent = 'Trayendo tus datos…';
+      await Promise.race([fullSync().catch(() => {}), new Promise((res) => setTimeout(res, 20000))]);
+      updatePill();
       router();
     } catch (e) {
       btn.disabled = false;
@@ -145,7 +148,7 @@ function bienvenida() {
 async function home() {
   const [visitas, degs, ctx] = await Promise.all([db.all('visita'), db.all('degustacion'), context()]);
   const hoy = todayISO();
-  const deHoy = visitas.filter((v) => v.data.fecha === hoy).sort((a, b) => b.createdAt - a.createdAt);
+  const deHoy = visitas.filter((v) => v.data.fecha === hoy && esMio(v)).sort((a, b) => b.createdAt - a.createdAt);
   const draft = getDraft('visita');
   const abiertas = degs.filter((d) => d.status !== 'completa' && esMio(d));
   const vencidas = vencidasList(ctx.comercioRecs, visitas);
@@ -208,7 +211,7 @@ async function home() {
   }
 
   root.append(h('div', { class: 'section' },
-    h('div', { class: 'section-head' }, h('p', { class: 'eyebrow' }, 'Visitas de hoy')),
+    h('div', { class: 'section-head' }, h('p', { class: 'eyebrow' }, 'Tus visitas de hoy')),
     deHoy.length ? deHoy.map((v) => visitaRow(v, ctx)) : h('p', { class: 'caption' }, 'Todavía no cargaste visitas hoy.')));
 }
 
@@ -628,8 +631,19 @@ async function boot() {
     h('a', { href: '#/tablero', 'data-k': 'tablero' }, icon('chart'), 'Tablero')));
   await router();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
-  if (isConfigured()) fullSync().then(() => updatePill()).catch(() => {});
-  window.addEventListener('online', () => syncAll().then(() => updatePill()));
-  setInterval(() => syncAll().then(() => updatePill()), 5 * 60 * 1000);
+  // Sincroniza al abrir, al volver la señal, al volver a la app y cada 5 minutos.
+  // Si llegaron datos nuevos, redibuja la pantalla (salvo que haya un formulario abierto).
+  const refresh = async () => {
+    if (!isConfigured()) return;
+    try {
+      const r = await fullSync();
+      updatePill();
+      if (r.received && nav.hidden === false) router();
+    } catch {}
+  };
+  refresh();
+  window.addEventListener('online', refresh);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refresh(); });
+  setInterval(refresh, 5 * 60 * 1000);
 }
 boot();
