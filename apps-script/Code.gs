@@ -14,7 +14,15 @@
  * para que la app lo pueda leer de vuelta; no la edites.
  */
 
+// Si el script se crea suelto (script.google.com) y no desde el Sheet, poné acá el ID del Sheet
+// (la parte entre /d/ y /edit de su dirección). Si está pegado dentro del Sheet, dejalo vacío.
+const SHEET_ID = '';
+
 const HOJAS = ['Comercios', 'Visitas', 'Degustaciones'];
+
+function libro() {
+  return SHEET_ID ? SpreadsheetApp.openById(SHEET_ID) : SpreadsheetApp.getActive();
+}
 const CARPETA_FOTOS = 'Rush App · Fotos';
 
 const PARAMETROS_INICIALES = [
@@ -29,6 +37,7 @@ const PARAMETROS_INICIALES = [
 ];
 
 function onOpen() {
+  if (SHEET_ID) return;
   SpreadsheetApp.getUi().createMenu('Rush App')
     .addItem('Configurar', 'configurar')
     .addItem('Ver datos de conexión', 'verConexion')
@@ -37,7 +46,7 @@ function onOpen() {
 }
 
 function configurar() {
-  const ss = SpreadsheetApp.getActive();
+  const ss = libro();
   HOJAS.forEach((n) => {
     let sh = ss.getSheetByName(n);
     if (!sh) sh = ss.insertSheet(n);
@@ -95,7 +104,7 @@ function doPost(e) {
     const token = PropertiesService.getScriptProperties().getProperty('TOKEN');
     if (!token || req.token !== token) return json({ ok: false, error: 'Clave incorrecta' });
     switch (req.action) {
-      case 'ping': return json({ ok: true, sheet: SpreadsheetApp.getActive().getName() });
+      case 'ping': return json({ ok: true, sheet: libro().getName() });
       case 'upsert': return json(upsert(req.sheet, req.id, req.row));
       case 'photo': return json(guardarFoto(req));
       case 'pull': return json(pull());
@@ -115,7 +124,7 @@ function upsert(nombreHoja, id, row) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const ss = SpreadsheetApp.getActive();
+    const ss = libro();
     let sh = ss.getSheetByName(nombreHoja);
     if (!sh) { sh = ss.insertSheet(nombreHoja); sh.appendRow(['ID']); }
     const lastCol = Math.max(1, sh.getLastColumn());
@@ -172,7 +181,7 @@ function guardarFoto(req) {
 }
 
 function pull() {
-  const ss = SpreadsheetApp.getActive();
+  const ss = libro();
   const records = [];
   HOJAS.forEach((n) => {
     const sh = ss.getSheetByName(n);
