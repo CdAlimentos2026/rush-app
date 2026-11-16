@@ -275,6 +275,8 @@ async function nuevaVisita() {
     onClose: () => go('#/'),
     onSave: async (d, snaps) => {
       const now = Date.now();
+      // El nombre del comercio viaja con la visita, por si el comercio todavía no está en el celular que sincroniza.
+      d.comercio_nombre = ctx.comercios.find((c) => c.id === d.comercio)?.nombre || '';
       const rec = { id: uid('v'), type: 'visita', createdAt: now, updatedAt: now, user: user(), data: d, snaps, _sync: 'pending' };
       clean(rec.data);
       await db.put(rec);
@@ -568,6 +570,7 @@ async function degustacionFase(id, phase) {
       const now = Date.now();
       if (!rec) rec = { id: uid('d'), type: 'degustacion', createdAt: now, user: user(), data: {}, snaps: {} };
       rec.data = { ...rec.data, ...d };
+      if (rec.data.comercio) rec.data.comercio_nombre = ctx.comercios.find((c) => c.id === rec.data.comercio)?.nombre || rec.data.comercio_nombre || '';
       rec.snaps = { ...(rec.snaps || {}), ...(snaps || {}) };
       rec.updatedAt = now;
       rec._sync = 'pending';

@@ -139,7 +139,7 @@ export function toRow(rec, comerciosById = {}) {
   for (const f of allFields(form)) {
     if (f.type === 'info') continue;
     let v = d[f.k];
-    if (f.src === 'comercios' && v) v = comerciosById[v]?.data?.nombre || v;
+    if (f.src === 'comercios' && v) v = comerciosById[v]?.data?.nombre || d.comercio_nombre || v;
     row.push([f.label, fmtValue(f, v)]);
   }
   if (rec.type === 'visita') {
@@ -221,8 +221,9 @@ export async function pull() {
 }
 
 export async function fullSync() {
-  const a = await syncAll();
+  // Primero trae lo del Sheet (así se conocen los comercios cargados por otros) y después sube.
   let b = {};
   try { b = await pull(); } catch (e) { b = { error: e.message }; }
-  return { ...a, ...b };
+  const a = await syncAll();
+  return { ...b, ...a };
 }
