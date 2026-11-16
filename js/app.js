@@ -146,6 +146,27 @@ async function home() {
         h('a', { class: 'btn btn-secondary', href: '#/degustacion/nueva' }, 'Degustación'))),
   );
 
+  const todos = [...visitas, ...degs, ...ctx.comercioRecs];
+  const demos = todos.filter((r) => r._demo).length;
+  const conError = todos.filter((r) => !r._demo && r._sync !== 'ok' && r._err);
+  if (!isConfigured()) {
+    root.append(h('div', { class: 'section' }, h('a', { class: 'card alert', href: '#/ajustes', style: { display: 'flex', textDecoration: 'none' } },
+      h('span', { class: 'sym' }),
+      h('div', { class: 'alert-body' }, h('div', { class: 'alert-title' }, 'No está conectada al Google Sheet'),
+        h('div', { class: 'caption' }, 'Lo que cargues queda solo en este celular. Tocá acá y pegá la dirección y la clave en Ajustes.')))));
+  } else if (conError.length) {
+    root.append(h('div', { class: 'section' }, h('button', { class: 'card alert', onclick: manualSync, style: { display: 'flex', width: '100%', textAlign: 'left', color: 'inherit' } },
+      h('span', { class: 'sym' }),
+      h('div', { class: 'alert-body' }, h('div', { class: 'alert-title' }, `${conError.length} sin poder subir`),
+        h('div', { class: 'caption' }, `${conError[0]._err}. Tocá para reintentar.`)))));
+  }
+  if (demos) {
+    root.append(h('div', { class: 'section' }, h('div', { class: 'card alert' },
+      h('span', { class: 'sym soft' }),
+      h('div', { class: 'alert-body' }, h('div', { class: 'alert-title' }, 'Estás viendo datos de ejemplo'),
+        h('div', { class: 'caption' }, 'Los datos de ejemplo no se suben nunca al Sheet. Borralos en Ajustes antes de empezar a cargar de verdad.')))));
+  }
+
   if (draft) {
     const c = ctx.comercios.find((x) => x.id === draft.data?.comercio);
     root.append(h('div', { class: 'section' },
@@ -583,7 +604,7 @@ async function ajustes() {
       h('p', { class: 'eyebrow' }, 'Datos de ejemplo'),
       h('p', { class: 'body small' }, 'Para ver cómo se llena el tablero antes de salir a la calle. Los datos de ejemplo nunca se suben al Sheet.'),
       h('div', { class: 'btn-row mt-4' },
-        h('button', { class: 'btn btn-secondary', onclick: async () => { await loadDemo(); toast('Datos de ejemplo cargados.'); go('#/tablero'); } }, 'Cargar ejemplo'),
+        h('button', { class: 'btn btn-secondary', onclick: async () => { await loadDemo(); toast('Ejemplo cargado. No se sube al Sheet.'); go('#/tablero'); } }, 'Cargar ejemplo'),
         h('button', { class: 'btn btn-tertiary', onclick: async () => { await clearDemo(); toast('Datos de ejemplo borrados.'); router(); } }, 'Borrar ejemplo'))),
     h('div', { class: 'section' },
       h('button', { class: 'btn btn-secondary btn-block', onclick: () => { save(); toast('Guardado.'); go('#/'); } }, 'Listo')),
