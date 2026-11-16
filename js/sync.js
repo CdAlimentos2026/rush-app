@@ -27,24 +27,29 @@ const listeners = new Set();
 export function onSyncChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 function emit(state) { listeners.forEach((f) => f(state)); }
 
-// La app está atada a un único Google Sheet ("Rush · App de campo"). La dirección no se puede
-// cambiar desde la app. En el celular solo se carga el código de acceso (la clave del script).
+// La app está atada a un único Google Sheet ("Rush · App de campo"). La dirección está fija acá y
+// no se puede cambiar desde la app. Cada persona entra con su usuario y su código (pestaña
+// "Usuarios" del Sheet); el Sheet verifica cada envío y no deja modificar lo que cargó otro.
 export const SHEET_URL = 'https://script.google.com/macros/s/AKfycbybNx5pXn0Z08DpeXJ_1XIwb9uTcLP2Yw1SFJzkHig5xIFHvklHq3nVR3MaIrWfK95cwg/exec';
 export const SHEET_NAME = 'Rush · App de campo';
 
 export function isConfigured() {
-  return !!getSettings().token;
+  const s = getSettings();
+  return !!(s.user && s.pin);
 }
 
-export async function post(body, token = getSettings().token) {
-  const r = await fetch(SHEET_URL, { method: 'POST', body: JSON.stringify({ ...body, token }) });
+export async function post(body, cred) {
+  const s = getSettings();
+  const auth = cred || { user: s.user, pin: s.pin };
+  const r = await fetch(SHEET_URL, { method: 'POST', body: JSON.stringify({ ...body, user: auth.user, pin: auth.pin }) });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   const j = await r.json();
   if (!j.ok) throw new Error(j.error || 'Error del Sheet');
   return j;
 }
 
-export async function ping(token) { return post({ action: 'ping' }, token); }
+export async function login(user, pin) { return post({ action: 'login' }, { user, pin }); }
+export async function ping() { return post({ action: 'ping' }); }
 
 export async function pendingCount() {
   const recs = await db.all();

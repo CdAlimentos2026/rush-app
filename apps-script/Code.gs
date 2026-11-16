@@ -20,6 +20,11 @@ const SHEET_ID = '';
 
 const HOJAS = ['Comercios', 'Visitas', 'Degustaciones'];
 
+// Usuarios: viven en la pestaña "Usuarios" del Sheet (Usuario · Código · Activo), no en este código.
+// Cada uno entra a la app con su nombre y su código. Cada registro queda a nombre de quien lo cargó
+// y nadie más lo puede modificar.
+const HOJA_USUARIOS = 'Usuarios';
+
 function libro() {
   return SHEET_ID ? SpreadsheetApp.openById(SHEET_ID) : SpreadsheetApp.getActive();
 }
@@ -66,6 +71,14 @@ function configurar() {
     estiloEncabezado(ped);
     ped.getRange('F1').setValue('Pegá acá el reporte de pedidos de la embotelladora. El nombre del comercio tiene que ser igual al de la app.');
   }
+  let us = ss.getSheetByName(HOJA_USUARIOS);
+  if (!us) {
+    us = ss.insertSheet(HOJA_USUARIOS);
+    us.appendRow(['Usuario', 'Código', 'Activo']);
+    estiloEncabezado(us);
+    us.getRange('A:B').setNumberFormat('@');
+    us.getRange('E1').setValue('Un usuario por fila. Activo: "no" para bloquearlo. El nombre se escribe en la app tal cual (sin importar mayúsculas).');
+  }
   const props = PropertiesService.getScriptProperties();
   if (!props.getProperty('TOKEN')) props.setProperty('TOKEN', generarClave());
   carpetaFotos();
@@ -95,17 +108,18 @@ function estiloEncabezado(sh) {
 
 // ---------------------------------------------------------------- web app
 function doGet() {
-  return json({ ok: true, app: 'rush', msg: 'Rush App activa. Esta dirección va en Ajustes de la app.' });
+  return json({ ok: true, app: 'rush', msg: 'Rush App activa.' });
 }
 
 function doPost(e) {
   try {
     const req = JSON.parse(e.postData.contents);
-    const token = PropertiesService.getScriptProperties().getProperty('TOKEN');
-    if (!token || req.token !== token) return json({ ok: false, error: 'Clave incorrecta' });
+    const quien = autenticar(req);
+    if (!quien) return json({ ok: false, error: 'Usuario o código incorrecto' });
     switch (req.action) {
-      case 'ping': return json({ ok: true, sheet: libro().getName() });
-      case 'upsert': return json(upsert(req.sheet, req.id, req.row));
+      case 'login':
+      case 'ping': return json({ ok: true, sheet: libro().getName(), user: quien.user });
+      case 'upsert': return json(upsert(req.sheet, req.id, req.row, quien));
       case 'photo': return json(guardarFoto(req));
       case 'pull': return json(pull());
       default: return json({ ok: false, error: 'Acción desconocida' });
@@ -115,11 +129,32 @@ function doPost(e) {
   }
 }
 
+function norm(s) {
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+}
+
+// Devuelve { user, admin } o null. La clave privada (TOKEN) es solo para administración.
+function autenticar(req) {
+  const token = PropertiesService.getScriptProperties().getProperty('TOKEN');
+  if (token && req.token === token) return { user: 'Administración', admin: true };
+  if (!req.user || req.pin === undefined || req.pin === '') return null;
+  const sh = libro().getSheetByName(HOJA_USUARIOS);
+  if (!sh || sh.getLastRow() < 2) return null;
+  const filas = sh.getRange(2, 1, sh.getLastRow() - 1, 3).getDisplayValues();
+  for (const [usuario, codigo, activo] of filas) {
+    if (!usuario) continue;
+    if (norm(usuario) === norm(req.user) && String(codigo).trim() === String(req.pin).trim() && norm(activo) !== 'no') {
+      return { user: String(usuario).trim(), admin: false };
+    }
+  }
+  return null;
+}
+
 function json(o) {
   return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
 }
 
-function upsert(nombreHoja, id, row) {
+function upsert(nombreHoja, id, row, quien) {
   if (HOJAS.indexOf(nombreHoja) < 0) throw new Error('Hoja no permitida: ' + nombreHoja);
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
@@ -136,16 +171,32 @@ function upsert(nombreHoja, id, row) {
       headers = headers.concat(nuevos);
       estiloEncabezado(sh);
     }
-    const values = headers.map(() => '');
-    row.forEach(([hd, v]) => { values[headers.indexOf(hd)] = v === null || v === undefined ? '' : v; });
-
     const idCol = headers.indexOf('ID') + 1;
+    const quienCol = headers.indexOf('Quién carga') + 1;
     let rowNum = -1;
     if (sh.getLastRow() > 1) {
       const f = sh.getRange(2, idCol, sh.getLastRow() - 1, 1).createTextFinder(String(id)).matchEntireCell(true).findNext();
       if (f) rowNum = f.getRow();
     }
+    // Cada registro es de quien lo cargó: nadie más lo puede modificar.
+    if (rowNum > 0 && quienCol > 0 && !quien.admin) {
+      const duenio = String(sh.getRange(rowNum, quienCol).getValue() || '').trim();
+      if (duenio && norm(duenio) !== norm(quien.user)) {
+        throw new Error('Esto lo cargó ' + duenio + '. No lo podés modificar.');
+      }
+    }
     if (rowNum < 0) rowNum = sh.getLastRow() + 1;
+
+    // El autor lo pone el servidor, no el celular.
+    row = row.map(([hd, v]) => {
+      if (hd === 'Quién carga' && !quien.admin) return [hd, quien.user];
+      if (hd === '_data' && !quien.admin) {
+        try { const d = JSON.parse(v); d.user = quien.user; return [hd, JSON.stringify(d)]; } catch (e) {}
+      }
+      return [hd, v];
+    });
+    const values = headers.map(() => '');
+    row.forEach(([hd, v]) => { values[headers.indexOf(hd)] = v === null || v === undefined ? '' : v; });
     // texto plano para que Sheets no convierta números de teléfono, fechas, etc.
     const rng = sh.getRange(rowNum, 1, 1, values.length);
     rng.setNumberFormat('@');

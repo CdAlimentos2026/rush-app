@@ -3,13 +3,15 @@ import { db, getSettings, saveSettings, getDraft, clearDraft, uid } from './db.j
 import { h, icons, icon, toast, fmtDate, fmtDateTime, todayISO, nowTime, daysBetween, imgFor, photoLink } from './ui.js';
 import { VISITA, COMERCIO, DEGUSTACION, allFields, disponibilidad, totalesHoras, lift } from './schema.js';
 import { runWizard, getGPS, photoMetaFor } from './form.js';
-import { syncAll, pull, fullSync, pendingCount, onSyncChange, isConfigured, ping, getParams, splitList, SHEET_NAME } from './sync.js';
+import { syncAll, pull, fullSync, pendingCount, onSyncChange, isConfigured, login, getParams, splitList, SHEET_NAME } from './sync.js';
 import { renderDashboard } from './dashboard.js';
-import { loadDemo, clearDemo } from './demo.js';
 
 const root = document.getElementById('app');
 const nav = document.getElementById('nav');
 const user = () => getSettings().user || 'Encargado';
+const norm = (x) => String(x || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+// Cada registro es de quien lo cargó; solo esa persona lo puede modificar.
+const esMio = (r) => !r.user || norm(r.user) === norm(user());
 
 // ---------------------------------------------------------------- contexto compartido
 async function context() {
@@ -47,7 +49,7 @@ const routes = [
 
 async function router() {
   const hash = location.hash || '#/';
-  if (!getSettings().user || !isConfigured()) return bienvenida();
+  if (!isConfigured()) return bienvenida();
   for (const [re, fn] of routes) {
     const m = hash.match(re);
     if (m) {
@@ -77,7 +79,7 @@ function topBar(extra) {
   return h('header', { class: 'top' },
     h('a', { class: 'wordmark', href: '#/' }, 'Rush'),
     h('div', { class: 'top-actions' }, extra, pill,
-      h('a', { class: 'icon-btn', href: '#/ajustes', 'aria-label': 'Ajustes' }, icon('gear'))));
+      h('a', { class: 'icon-btn', href: '#/ajustes', 'aria-label': 'Tu cuenta' }, icon('gear'))));
 }
 async function updatePill(pill = document.querySelector('.sync-pill')) {
   if (!pill) return;
@@ -108,34 +110,34 @@ const syncTag = (r) => (r._demo ? h('span', { class: 'tag' }, 'Ejemplo') : r._sy
 // ---------------------------------------------------------------- bienvenida
 function bienvenida() {
   nav.hidden = true;
-  const s = getSettings();
-  const inp = h('input', { class: 'input', id: 'w-name', placeholder: 'Tu nombre', autocomplete: 'name', value: s.user || '' });
-  const code = h('input', { class: 'input', id: 'w-code', placeholder: 'Código que te pasó la marca', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
+  const inp = h('input', { class: 'input', id: 'w-name', placeholder: 'Tu usuario', autocomplete: 'username', autocapitalize: 'words' });
+  const pin = h('input', { class: 'input', id: 'w-pin', type: 'password', inputmode: 'numeric', placeholder: 'Código', autocomplete: 'current-password' });
   const msg = h('p', { class: 'caption mt-3', role: 'status' });
-  const btn = h('button', { class: 'btn btn-primary btn-block mt-6', onclick: async () => {
+  const entrar = async () => {
     if (!inp.value.trim()) { inp.focus(); return; }
-    if (!code.value.trim()) { code.focus(); return; }
+    if (!pin.value.trim()) { pin.focus(); return; }
     btn.disabled = true;
     msg.textContent = 'Verificando…';
     try {
-      await ping(code.value.trim());
-      saveSettings({ ...getSettings(), user: inp.value.trim(), token: code.value.trim() });
-      msg.textContent = 'Listo.';
+      const r = await login(inp.value.trim(), pin.value.trim());
+      saveSettings({ user: r.user, pin: pin.value.trim() });
       fullSync().catch(() => {}).finally(() => updatePill());
       router();
     } catch (e) {
       btn.disabled = false;
-      msg.textContent = /clave/i.test(e.message) ? 'El código no es correcto. Revisalo y probá de nuevo.' : 'No hay conexión. La primera vez necesitás señal para entrar.';
+      msg.textContent = /incorrect/i.test(e.message) ? 'Usuario o código incorrecto.' : 'No hay conexión. Para entrar la primera vez necesitás señal.';
     }
-  } }, 'Empezar', h('span', { class: 'arrow' }, icon('arrow')));
+  };
+  pin.addEventListener('keydown', (e) => { if (e.key === 'Enter') entrar(); });
+  const btn = h('button', { class: 'btn btn-primary btn-block mt-6', onclick: entrar }, 'Entrar', h('span', { class: 'arrow' }, icon('arrow')));
   root.replaceChildren(h('div', { class: 'enter', style: { paddingTop: '10vh' } },
     h('p', { class: 'lk-eyebrow' }, '¿Qué vas a mover hoy?'),
     h('h1', { class: 'lk-title' }, h('span', { class: 'v' }, 'Hacé'), ' que pase', h('span', { class: 'x' }, '!')),
     h('p', { class: 'lk-word' }, 'Rush Energy'),
     h('hr', { class: 'rule' }),
     h('p', { class: 'body' }, 'Esta es tu herramienta de calle. Cada visita y cada degustación quedan registradas y llegan al tablero.'),
-    h('div', { class: 'field mt-6' }, h('label', { class: 'field-label', for: 'w-name' }, '¿Cómo te llamás?'), inp),
-    h('div', { class: 'field' }, h('label', { class: 'field-label', for: 'w-code' }, 'Código de acceso'), code),
+    h('div', { class: 'field mt-6' }, h('label', { class: 'field-label', for: 'w-name' }, 'Usuario'), inp),
+    h('div', { class: 'field' }, h('label', { class: 'field-label', for: 'w-pin' }, 'Código de acceso'), pin),
     btn, msg));
 }
 
@@ -145,7 +147,7 @@ async function home() {
   const hoy = todayISO();
   const deHoy = visitas.filter((v) => v.data.fecha === hoy).sort((a, b) => b.createdAt - a.createdAt);
   const draft = getDraft('visita');
-  const abiertas = degs.filter((d) => d.status !== 'completa');
+  const abiertas = degs.filter((d) => d.status !== 'completa' && esMio(d));
   const vencidas = vencidasList(ctx.comercioRecs, visitas);
   const nombre = user().split(' ')[0];
 
@@ -244,6 +246,7 @@ function degRow(d, ctx) {
   if (st === 'antes') { next = 'Empezar · Durante'; href = `#/degustacion/${d.id}/durante`; }
   else if (st === 'cerrada') { next = dias >= 7 ? 'Cargar resultado de 7 días' : `Resultado en ${7 - dias} días`; href = `#/degustacion/${d.id}/despues`; }
   else { next = 'Completa'; href = `#/degustacion/${d.id}`; }
+  if (!esMio(d)) { href = `#/degustacion/${d.id}`; next = `cargada por ${d.user}`; }
   return rowLink(href, lugar || 'Degustación', `${fmtDate(d.data.fecha)} · ${next}`,
     h('div', { class: 'flex', style: { gap: '6px' } }, syncTag(d), st === 'cerrada' && dias >= 7 ? h('span', { class: 'tag red' }, 'Toca hoy') : null));
 }
@@ -316,7 +319,7 @@ async function verRegistro(id) {
     root.append(h('div', { class: 'section kpis' },
       kpi('Degustadas', t.degustadas), kpi('Compras', t.compras, t.conversion === null ? '' : `${Math.round(t.conversion * 100)}% conversión`),
       kpi('Post-activación', l === null ? '—' : l.toFixed(2) + '×', 'Semana siguiente ÷ anterior', true)));
-    if (rec.status !== 'completa') {
+    if (rec.status !== 'completa' && esMio(rec)) {
       const ph = rec.status === 'antes' ? 'durante' : 'despues';
       root.append(h('a', { class: 'btn btn-primary btn-block mt-6', href: `#/degustacion/${rec.id}/${ph}` }, ph === 'durante' ? 'Seguir con Durante' : 'Cargar resultado de 7 días', h('span', { class: 'arrow' }, icon('arrow'))));
     }
@@ -416,6 +419,7 @@ async function comercios() {
 async function editarComercio(id) {
   const ctx = await context();
   const rec = id ? await db.get(id) : null;
+  if (rec && !esMio(rec)) { toast(`Esta ficha la cargó ${rec.user}. No la podés editar.`); go('#/comercio/' + id); return; }
   const draftKey = 'comercio-' + (id || 'nuevo');
   const draft = getDraft(draftKey);
   runWizard(root, {
@@ -471,7 +475,8 @@ async function fichaComercio(id) {
         if (getDraft('visita') && !confirm('Tenés una visita sin terminar. ¿Descartarla y empezar una en este comercio?')) return;
         clearDraft('visita'); sessionStorage.setItem('rush.preComercio', id); go('#/visita/nueva');
       } }, 'Visitar ahora', h('span', { class: 'arrow' }, icon('arrow'))),
-      h('a', { class: 'btn btn-secondary', href: `#/comercio/${id}/editar` }, 'Editar ficha'))));
+      esMio(rec) ? h('a', { class: 'btn btn-secondary', href: `#/comercio/${id}/editar` }, 'Editar ficha') : null),
+    esMio(rec) ? null : h('p', { class: 'caption mt-3' }, `Ficha cargada por ${rec.user}. Solo esa persona la puede editar.`)));
 
   if (d.objetivo) root.append(h('div', { class: 'section' }, h('p', { class: 'eyebrow' }, 'Objetivo a 30 días'), h('div', { class: 'quote' }, d.objetivo)));
 
@@ -541,6 +546,7 @@ async function degustacionFase(id, phase) {
   ctx.newComercio = () => toast('Dalo de alta desde Comercios y volvé.');
   let rec = id ? await db.get(id) : null;
   if (id && !rec) { go('#/degustaciones'); return; }
+  if (rec && !esMio(rec)) { toast(`Esta degustación la cargó ${rec.user}. No la podés modificar.`); go('#/degustacion/' + id); return; }
   const draftKey = `deg-${id || 'nueva'}-${phase}`;
   const draft = getDraft(draftKey);
   const ph = DEGUSTACION.phases[phase];
@@ -587,34 +593,18 @@ async function tablero() {
 
 // ---------------------------------------------------------------- ajustes
 async function ajustes() {
-  const s = getSettings();
-  const name = h('input', { class: 'input', value: s.user || '' });
+  // Pantalla de solo lectura: no hay nada configurable en la app.
   const status = h('p', { class: 'caption mt-3', role: 'status' });
   const pend = await pendingCount();
   const lastSync = await db.getMeta('lastSync');
-  const save = () => saveSettings({ ...getSettings(), user: name.value.trim() || getSettings().user });
-
-  // Código de acceso: solo para cuando se genera uno nuevo en el script. El Sheet no se puede cambiar.
-  const codeBox = h('div', { hidden: true });
-  const code = h('input', { class: 'input', placeholder: 'Código nuevo', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
-  codeBox.append(h('div', { class: 'field mt-4' }, h('label', { class: 'field-label' }, 'Código de acceso nuevo'), code),
-    h('button', { class: 'btn btn-secondary mt-3', onclick: async () => {
-      if (!code.value.trim()) { code.focus(); return; }
-      status.textContent = 'Verificando…';
-      try { await ping(code.value.trim()); saveSettings({ ...getSettings(), token: code.value.trim() }); status.textContent = 'Código actualizado.'; codeBox.hidden = true; }
-      catch (e) { status.textContent = /clave/i.test(e.message) ? 'Ese código no es correcto.' : 'Sin conexión. Probá con señal.'; }
-    } }, 'Guardar código'));
-
   root.append(topBar(), h('div', { class: 'enter' },
-    h('p', { class: 'eyebrow mt-4' }, 'Configuración'),
-    h('h1', { class: 'h1' }, 'Ajustes'),
-    h('div', { class: 'field mt-6' }, h('label', { class: 'field-label' }, 'Tu nombre'), name),
+    h('p', { class: 'eyebrow mt-4' }, 'Tu cuenta'),
+    h('h1', { class: 'h1' }, user()),
     h('div', { class: 'section' },
-      h('p', { class: 'eyebrow' }, 'Google Sheet'),
       h('div', { class: 'card' },
-        h('div', { class: 'micro' }, 'Conectada a'),
+        h('div', { class: 'micro' }, 'Todo se guarda en'),
         h('div', { class: 'h3 mt-2' }, SHEET_NAME),
-        h('p', { class: 'caption mt-2' }, 'Es fija: todo lo que se carga en esta app va siempre a este Sheet.')),
+        h('p', { class: 'caption mt-2' }, 'Es fijo y no se puede cambiar. Lo que cargás queda a tu nombre y nadie más lo puede modificar.')),
       h('div', { class: 'btn-row mt-4' },
         h('button', { class: 'btn btn-primary', onclick: async () => {
           status.textContent = 'Sincronizando…';
@@ -622,20 +612,9 @@ async function ajustes() {
           catch (e) { status.textContent = 'No se pudo sincronizar: ' + e.message; }
         } }, icon('sync'), 'Sincronizar ahora')),
       status,
-      h('p', { class: 'caption mt-3' }, `${pend} registros sin subir · última sincronización: ${lastSync ? fmtDateTime(lastSync) : 'nunca'}`),
-      h('button', { class: 'btn btn-tertiary mt-2', style: { paddingLeft: 0 }, onclick: () => { codeBox.hidden = !codeBox.hidden; } }, 'Cambiar código de acceso'),
-      codeBox),
-    h('div', { class: 'section' },
-      h('p', { class: 'eyebrow' }, 'Datos de ejemplo'),
-      h('p', { class: 'body small' }, 'Para ver cómo se llena el tablero antes de salir a la calle. Los datos de ejemplo nunca se suben al Sheet.'),
-      h('div', { class: 'btn-row mt-4' },
-        h('button', { class: 'btn btn-secondary', onclick: async () => { await loadDemo(); toast('Ejemplo cargado. No se sube al Sheet.'); go('#/tablero'); } }, 'Cargar ejemplo'),
-        h('button', { class: 'btn btn-tertiary', onclick: async () => { await clearDemo(); toast('Datos de ejemplo borrados.'); router(); } }, 'Borrar ejemplo'))),
-    h('div', { class: 'section' },
-      h('button', { class: 'btn btn-secondary btn-block', onclick: () => { save(); toast('Guardado.'); go('#/'); } }, 'Listo')),
-    h('p', { class: 'caption mt-8' }, 'Rush · App de campo · v1.1')));
+      h('p', { class: 'caption mt-3' }, `${pend} registros sin subir · última sincronización: ${lastSync ? fmtDateTime(lastSync) : 'nunca'}`)),
+    h('p', { class: 'caption mt-8' }, 'Rush · App de campo · v1.2')));
 }
-
 
 // ---------------------------------------------------------------- arranque
 async function boot() {
