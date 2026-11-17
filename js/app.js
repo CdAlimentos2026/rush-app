@@ -257,9 +257,9 @@ function degRow(d, ctx) {
   const st = d.status;
   const dias = d.closedAt ? daysBetween(d.closedAt, Date.now()) : 0;
   let next, href;
-  if (st === 'antes') { next = 'Empezar · Durante'; href = `#/degustacion/${d.id}/durante`; }
-  else if (st === 'cerrada') { next = dias >= 7 ? 'Cargar resultado de 7 días' : `Resultado en ${7 - dias} días`; href = `#/degustacion/${d.id}/despues`; }
-  else { next = 'Completa'; href = `#/degustacion/${d.id}`; }
+  if (st === 'antes') { next = 'Lista. Tocá cuando empiece (paso 2)'; href = `#/degustacion/${d.id}/durante`; }
+  else if (st === 'cerrada') { next = dias >= 7 ? 'Toca cargar el resultado (paso 3)' : `Resultado (paso 3) en ${7 - dias} ${7 - dias === 1 ? 'día' : 'días'}`; href = `#/degustacion/${d.id}/despues`; }
+  else { next = 'Terminada'; href = `#/degustacion/${d.id}`; }
   if (!esMio(d)) { href = `#/degustacion/${d.id}`; next = `cargada por ${d.user}`; }
   return rowLink(href, lugar || 'Degustación', `${fmtDate(d.data.fecha)} · ${next}`,
     h('div', { class: 'flex', style: { gap: '6px' } }, syncTag(d), st === 'cerrada' && dias >= 7 ? h('span', { class: 'tag red' }, 'Toca hoy') : null));
@@ -333,11 +333,11 @@ async function verRegistro(id) {
     const t = totalesHoras(d.horas);
     const l = lift(d);
     root.append(h('div', { class: 'section kpis' },
-      kpi('Degustadas', t.degustadas), kpi('Compras', t.compras, t.conversion === null ? '' : `${Math.round(t.conversion * 100)}% conversión`),
-      kpi('Post-activación', l === null ? '—' : l.toFixed(2) + '×', 'Semana siguiente ÷ anterior', true)));
+      kpi('Probaron', t.degustadas, `${t.abordadas} invitadas`), kpi('Compraron', t.compras, t.conversion === null ? '' : `${Math.round(t.conversion * 100)}% de los que probaron`),
+      kpi('Semana después', l === null ? '—' : `${l >= 1 ? '+' : ''}${Math.round((l - 1) * 100)}%`, 'Compras vs. la semana antes', true)));
     if (rec.status !== 'completa' && esMio(rec)) {
       const ph = rec.status === 'antes' ? 'durante' : 'despues';
-      root.append(h('a', { class: 'btn btn-primary btn-block mt-6', href: `#/degustacion/${rec.id}/${ph}` }, ph === 'durante' ? 'Seguir con Durante' : 'Cargar resultado de 7 días', h('span', { class: 'arrow' }, icon('arrow'))));
+      root.append(h('a', { class: 'btn btn-primary btn-block mt-6', href: `#/degustacion/${rec.id}/${ph}` }, ph === 'durante' ? 'Paso 2: empezar la degustación' : 'Paso 3: cargar el resultado', h('span', { class: 'arrow' }, icon('arrow'))));
     }
   }
 
@@ -386,7 +386,7 @@ function valueRow(f, v, ctx) {
     case 'photo': case 'signature': out = h('div', { class: 'snap-thumbs' }, thumbLink(v)); break;
     case 'photos': out = h('div', { class: 'snap-thumbs' }, v.map(thumbLink)); break;
     case 'table': out = h('div', {}, v.map((r) => h('div', { class: 'caption' }, f.cols.map((c) => `${c.label}: ${c.type === 'yesno' ? (r[c.k] === 'si' ? 'Sí' : r[c.k] === 'no' ? 'No' : '') : r[c.k] ?? ''}`).join(' · ')))); break;
-    case 'hours': out = h('div', {}, v.map((r) => h('div', { class: 'caption' }, `${r.hora} · ${r.abordadas || 0} abordadas · ${r.degustadas || 0} degustadas · ${r.original || 0} O · ${r.zero || 0} Z${r.nota ? ' · ' + r.nota : ''}`))); break;
+    case 'hours': out = h('div', {}, v.map((r) => h('div', { class: 'caption' }, `${r.hora} · ${r.abordadas || 0} invitadas · ${r.degustadas || 0} probaron · ${r.original || 0} Original · ${r.zero || 0} ZERO${r.nota ? ' · ' + r.nota : ''}`))); break;
     default: out = String(v);
   }
   const block = typeof out !== 'string' || out.length > 32;
@@ -552,15 +552,29 @@ async function degustaciones() {
   const [degs, ctx] = await Promise.all([db.all('degustacion'), context()]);
   degs.sort((a, b) => b.createdAt - a.createdAt);
   root.append(topBar(), h('div', { class: 'enter' },
-    h('p', { class: 'eyebrow mt-4' }, 'Antes · durante · a los 7 días'),
+    h('p', { class: 'eyebrow mt-4' }, 'Dar a probar Rush'),
     h('h1', { class: 'h1' }, 'Degustaciones'),
     soloLectura() ? null : h('a', { class: 'btn btn-primary btn-block mt-6', href: '#/degustacion/nueva' }, 'Nueva degustación', h('span', { class: 'arrow' }, icon('arrow'))),
-    h('div', { class: 'mt-6' }, degs.length ? degs.map((d) => degRow(d, ctx)) : h('p', { class: 'caption' }, 'Todavía no hay degustaciones.'))));
+    soloLectura() ? null : comoFuncionaDeg(!degs.some(esMio)),
+    degs.length ? h('div', { class: 'mt-6' }, degs.map((d) => degRow(d, ctx))) : h('p', { class: 'caption mt-6' }, 'Todavía no hay degustaciones.')));
+}
+
+// Explicación para quien nunca hizo una degustación. Abierta si todavía no hay ninguna.
+function comoFuncionaDeg(open) {
+  const paso = (t, d) => h('li', {}, h('div', {}, h('div', { class: 'h3' }, t), h('div', { class: 'caption' }, d)));
+  return h('details', { class: 'card mt-4', open: open || undefined },
+    h('summary', { class: 'h3' }, '¿Cómo se carga una degustación?'),
+    h('p', { class: 'caption mt-3' }, 'Una degustación es dar a probar Rush gratis, en vasitos, para que la gente la conozca y la compre ahí mismo. Se carga en 3 momentos, siempre en la misma degustación:'),
+    h('ol', { class: 'howto' },
+      paso('Antes de empezar', 'Dónde y cuándo es, revisás que esté todo listo y contás cuántas latas hay. Tarda unos 5 minutos.'),
+      paso('Durante', 'Cada vez que le ofrecés a alguien, que alguien prueba o que alguien compra, sumás con el botón +. Al final, 5 frases de la gente y la firma de quien dio a probar.'),
+      paso('Una semana después', 'Cargás cuántas latas compró el comercio esa semana. La app te avisa en Inicio cuando toca.')),
+    h('p', { class: 'caption mt-4' }, 'Podés cerrar la app en cualquier momento: lo que cargaste queda guardado y la degustación aparece en esta lista para seguir.'));
 }
 
 async function degustacionFase(id, phase) {
   const ctx = await context();
-  ctx.newComercio = () => toast('Dalo de alta desde Comercios y volvé.');
+  ctx.newComercio = () => { sessionStorage.setItem('rush.returnTo', '#/degustacion/nueva'); go('#/comercio/nuevo'); };
   let rec = id ? await db.get(id) : null;
   if (id && !rec) { go('#/degustaciones'); return; }
   if (rec && !esMio(rec)) { toast(`Esta degustación la cargó ${rec.user}. No la podés modificar.`); go('#/degustacion/' + id); return; }
@@ -569,6 +583,9 @@ async function degustacionFase(id, phase) {
   const ph = DEGUSTACION.phases[phase];
   const data = draft?.data || { ...(rec?.data || {}) };
   if (phase === 'antes' && !data.promotor) data.promotor = '';
+  // Volvió de dar de alta un comercio nuevo: queda elegido.
+  const pre = sessionStorage.getItem('rush.preComercio');
+  if (pre && !id && phase === 'antes') { sessionStorage.removeItem('rush.preComercio'); data.lugar_tipo = 'En un comercio'; data.comercio = pre; }
   runWizard(root, {
     title: `Degustación · ${ph.label}`,
     steps: ph.steps,
@@ -577,7 +594,7 @@ async function degustacionFase(id, phase) {
     startStep: draft?.i || 0,
     ctx,
     draftKey,
-    saveLabel: phase === 'antes' ? 'Guardar y quedar listo' : phase === 'durante' ? 'Cerrar el evento' : 'Guardar resultado',
+    saveLabel: phase === 'antes' ? 'Guardar: todo listo' : phase === 'durante' ? 'Terminar' : 'Guardar',
     photoMeta: photoMetaFor('degustacion', (d) => (d.lugar_tipo === 'Vía pública' ? d.lugar : comercioName(ctx)(d))),
     onClose: () => go(rec ? '#/degustaciones' : '#/'),
     onSave: async (d, snaps) => {
@@ -585,7 +602,14 @@ async function degustacionFase(id, phase) {
       const now = Date.now();
       if (!rec) rec = { id: uid('d'), type: 'degustacion', createdAt: now, user: user(), data: {}, snaps: {} };
       rec.data = { ...rec.data, ...d };
-      if (rec.data.comercio) rec.data.comercio_nombre = ctx.comercios.find((c) => c.id === rec.data.comercio)?.nombre || rec.data.comercio_nombre || '';
+      const com = ctx.comercios.find((c) => c.id === rec.data.comercio);
+      if (rec.data.comercio) rec.data.comercio_nombre = com?.nombre || rec.data.comercio_nombre || '';
+      // El tipo de lugar se toma solo: el del comercio, o vía pública.
+      if (rec.data.lugar_tipo === 'Vía pública') rec.data.tipo_pdv = 'Vía pública';
+      else {
+        const cd = ctx.comercioRecs.find((c) => c.id === rec.data.comercio)?.data;
+        if (cd?.tipo_pdv) rec.data.tipo_pdv = cd.tipo_pdv === 'Otro' ? (cd.tipo_pdv_otro || 'Otro') : cd.tipo_pdv;
+      }
       rec.snaps = { ...(rec.snaps || {}), ...(snaps || {}) };
       rec.updatedAt = now;
       rec._sync = 'pending';
@@ -594,7 +618,7 @@ async function degustacionFase(id, phase) {
       if (phase === 'despues') rec.status = 'completa';
       await db.put(rec);
       clearDraft(draftKey);
-      toast(phase === 'antes' ? 'Listo. Cuando arranque, abrí "Durante".' : phase === 'durante' ? 'Evento cerrado. En 7 días te aviso para el resultado.' : 'Degustación completa.');
+      toast(phase === 'antes' ? 'Guardado. Cuando empiece la degustación, seguí con el paso 2.' : phase === 'durante' ? 'Degustación terminada. En 7 días te aviso en Inicio para cargar el resultado.' : 'Listo: degustación completa.');
       syncAll().then(() => updatePill());
       go(phase === 'antes' ? `#/degustacion/${rec.id}/durante` : '#/degustacion/' + rec.id);
     },

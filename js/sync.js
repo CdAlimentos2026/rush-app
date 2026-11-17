@@ -140,7 +140,7 @@ export function toRow(rec, comerciosById = {}) {
     if (f.type === 'info') continue;
     let v = d[f.k];
     if (f.src === 'comercios' && v) v = comerciosById[v]?.data?.nombre || d.comercio_nombre || v;
-    row.push([f.label, fmtValue(f, v)]);
+    row.push([f.col || f.label, fmtValue(f, v)]);
   }
   if (rec.type === 'visita') {
     const disp = disponibilidad(d);
@@ -158,7 +158,7 @@ export function toRow(rec, comerciosById = {}) {
   row.push(['_data', JSON.stringify({ id: rec.id, type: rec.type, createdAt: rec.createdAt, updatedAt: rec.updatedAt, user: rec.user, status: rec.status, data: rec.data, snaps: rec.snaps })]);
   return row;
 }
-function labelOf(form, k) { return allFields(form).find((f) => f.k === k)?.label || k; }
+function labelOf(form, k) { const f = allFields(form).find((x) => x.k === k); return f?.col || f?.label || k; }
 
 // ---------------------------------------------------------------- push / pull
 export async function syncAll() {

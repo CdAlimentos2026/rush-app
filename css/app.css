@@ -464,3 +464,23 @@ input[type="date"].input, input[type="time"].input { appearance: none; -webkit-a
 .seg-opt[aria-pressed="true"] .opt-desc { color: var(--text-label); }
 .seg-opt.has-desc { align-items: flex-start; padding-top: 14px; padding-bottom: 14px; }
 .seg-opt.has-desc .mark { margin-top: 1px; }
+
+/* Degustación: textos de ayuda para quien la hace por primera vez */
+.step-intro { margin-top: var(--space-3); color: var(--text-label); max-width: 60ch; }
+.check .opt-text { display: flex; flex-direction: column; gap: 4px; text-align: left; }
+.check .opt-label { font-weight: 600; }
+.check .opt-desc { font-size: 13px; font-weight: 400; line-height: 1.4; color: var(--text-muted); }
+.check[aria-pressed="true"] .opt-desc { color: var(--text-label); }
+.counter .lbl { letter-spacing: .08em; }
+.counter-desc { font-size: 12px; line-height: 1.35; color: var(--text-muted); margin-top: 2px; min-height: 2.7em; }
+.howto { counter-reset: paso; list-style: none; padding: 0; margin: var(--space-4) 0 0; display: grid; gap: var(--space-3); }
+.howto li { counter-increment: paso; display: grid; grid-template-columns: 32px 1fr; gap: var(--space-3); align-items: start; }
+.howto li::before { content: counter(paso); width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border-strong); display: grid; place-items: center; font-family: var(--font-display); font-weight: 800; color: var(--text-primary); }
+.howto .h3 { margin: 4px 0 2px; }
+.field:has(> .check) + .field:has(> .check) { margin-top: var(--space-2); }
+.counters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.counter .minus, .counter .plus { width: 40px; height: 40px; flex: none; }
+.counter .num { font-size: 28px; }
+.counter { display: flex; flex-direction: column; }
+.counter .ctl { margin-top: auto; padding-top: 6px; }
+.counter-desc { min-height: 0; }

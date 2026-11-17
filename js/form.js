@@ -58,12 +58,13 @@ export function runWizard(root, opts) {
     );
     head.replaceChildren(h('div', { class: 'enter' },
       h('p', { class: 'eyebrow' }, step.eyebrow || ''),
-      h('h1', { class: 'h1' }, step.title)));
+      h('h1', { class: 'h1' }, step.title),
+      step.intro ? h('p', { class: 'body step-intro' }, step.intro) : null));
     const last = state.i === steps.length - 1;
     foot.replaceChildren(h('div', { class: 'wiz-foot-in' },
       state.i > 0 ? h('button', { class: 'btn btn-secondary btn-icon', onclick: prev, 'aria-label': 'Paso anterior' }, icon('back')) : null,
       h('button', { class: 'btn btn-primary', onclick: next },
-        last ? (opts.saveLabel || 'Guardar') : step.gate ? 'Todo listo, empezar' : 'Siguiente',
+        last ? (opts.saveLabel || 'Guardar') : step.gate ? 'Está todo listo' : 'Siguiente',
         h('span', { class: 'arrow' }, icon('arrow')))));
   }
 
@@ -117,7 +118,7 @@ export function runWizard(root, opts) {
       renderBody();
       const first = body.querySelector('.field.invalid');
       first?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      toast(step.gate ? 'Falta marcar ítems: no se empieza sin el estándar.' : 'Faltan datos obligatorios.');
+      toast(step.gate ? 'Falta marcar algo. Resolvelo antes de empezar.' : 'Faltan datos obligatorios.');
       return;
     }
     if (state.i === steps.length - 1) { opts.onSave(state.data, state.snaps); return; }
@@ -207,7 +208,8 @@ const FIELD = {
     return wrap;
   },
   check: (f, v, set) => h('button', { type: 'button', class: 'check', 'aria-pressed': String(!!v), onclick: () => set(!v) },
-    h('span', { class: 'box', html: icons.check }), h('span', {}, f.label)),
+    h('span', { class: 'box', html: icons.check }),
+    h('span', { class: 'opt-text' }, h('span', { class: 'opt-label' }, f.label), f.desc ? h('span', { class: 'opt-desc' }, f.desc) : null)),
   consent: (f, v, set) => v
     ? h('div', { class: 'result' }, h('div', { class: 'ico', html: icons.checkThin }),
         h('div', { class: 'grow' }, h('div', { class: 'h3' }, 'Conformidad registrada'), h('div', { class: 'caption' }, new Date(v).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' }))),
@@ -240,7 +242,7 @@ const FIELD = {
   multitext(f, v, set) {
     const arr = Array.isArray(v) ? [...v] : [];
     return h('div', { class: 'stack' }, Array.from({ length: f.n }, (_, i) => {
-      const inp = h('input', { class: 'input', value: arr[i] || '', placeholder: `Respuesta ${i + 1}` });
+      const inp = h('input', { class: 'input', value: arr[i] || '', placeholder: `Persona ${i + 1}` });
       inp.addEventListener('input', () => { arr[i] = inp.value; set([...arr], false); });
       return inp;
     }));
@@ -256,13 +258,7 @@ const FIELD = {
   },
   info(f, v, set, st) {
     if (f.render === 'disponibilidad') return dispCard(st.data);
-    if (f.render === 'lift') {
-      const l = lift(st.data);
-      return h('div', { class: 'result' + (l !== null && l < 1 ? ' bad' : '') },
-        h('div', { class: 'ico', html: l !== null && l < 1 ? icons.x : icons.checkThin }),
-        h('div', {}, h('div', { class: 'h3' }, l === null ? 'Nivel post-activación' : `${l.toFixed(2)}×`),
-          h('div', { class: 'caption' }, l === null ? 'Se calcula con la venta de la semana siguiente.' : `Semana siguiente ÷ semana anterior (${st.data.venta_sem_siguiente} / ${st.data.venta_sem_anterior}).`)));
-    }
+    if (f.render === 'lift') return liftCard(st.data);
     return h('div');
   },
   table(f, v, set) {
@@ -288,34 +284,58 @@ const FIELD = {
     const rows = Array.isArray(v) ? v.map((r) => ({ ...r })) : [];
     const upd = (rr = true) => set(rows.map((r) => ({ ...r })), rr);
     const t = totalesHoras(rows);
-    const counter = (r, k, label) => {
+    const counter = (r, k, label, desc) => {
       const num = h('span', { class: 'num' }, r[k] || 0);
       const bump = (d) => { r[k] = Math.max(0, (Number(r[k]) || 0) + d); num.textContent = r[k]; upd(true); };
-      return h('div', { class: 'counter' }, h('div', { class: 'lbl' }, label),
+      return h('div', { class: 'counter' }, h('div', { class: 'lbl' }, label), h('div', { class: 'counter-desc' }, desc),
         h('div', { class: 'ctl' },
-          h('button', { type: 'button', class: 'minus', 'aria-label': 'Restar ' + label, onclick: () => bump(-1) }, '−'),
+          h('button', { type: 'button', class: 'minus', 'aria-label': 'Restar: ' + label, onclick: () => bump(-1) }, '−'),
           num,
-          h('button', { type: 'button', class: 'plus', 'aria-label': 'Sumar ' + label, onclick: () => bump(1) }, '+')));
+          h('button', { type: 'button', class: 'plus', 'aria-label': 'Sumar: ' + label, onclick: () => bump(1) }, '+')));
     };
+    const conv = t.conversion === null ? 'Todavía nadie probó.' : `De cada 10 que probaron, ${Math.round(t.conversion * 10)} compraron.`;
     return h('div', {},
-      h('div', { class: 'kpis' },
-        h('div', { class: 'kpi' }, h('span', { class: 'micro' }, 'Degustadas'), h('div', { class: 'kpi-num' }, t.degustadas)),
-        h('div', { class: 'kpi' }, h('span', { class: 'micro' }, 'Compras'), h('div', { class: 'kpi-num' }, t.compras),
-          h('div', { class: 'caption' }, t.conversion === null ? '—' : `${Math.round(t.conversion * 100)}% de conversión`))),
+      rows.length ? h('div', {},
+        h('p', { class: 'micro' }, 'Total hasta ahora'),
+        h('div', { class: 'kpis mt-2' },
+          h('div', { class: 'kpi' }, h('span', { class: 'micro' }, 'Probaron'), h('div', { class: 'kpi-num' }, t.degustadas)),
+          h('div', { class: 'kpi' }, h('span', { class: 'micro' }, 'Compraron'), h('div', { class: 'kpi-num' }, t.compras))),
+        h('p', { class: 'caption mt-2' }, conv)) : null,
       rows.map((r, j) => h('div', { class: 'card hour-card mt-3' },
         h('div', { class: 'hour-head' },
-          (() => { const inp = h('input', { class: 'input', type: 'time', value: r.hora || '', style: { width: '130px' } }); inp.addEventListener('change', () => { r.hora = inp.value; upd(false); }); return inp; })(),
-          h('button', { class: 'btn btn-tertiary', onclick: () => { if (confirm('¿Borrar esta hora?')) { rows.splice(j, 1); upd(); } } }, 'Borrar')),
+          h('div', {}, h('div', { class: 'micro' }, j === rows.length - 1 ? 'Hora actual · empezó a las' : 'Empezó a las'),
+            (() => { const inp = h('input', { class: 'input', type: 'time', value: r.hora || '', style: { width: '130px' }, 'aria-label': 'Hora de inicio' }); inp.addEventListener('change', () => { r.hora = inp.value; upd(false); }); return inp; })()),
+          h('button', { class: 'btn btn-tertiary', onclick: () => { if (confirm('¿Borrar esta hora y lo que contaste en ella?')) { rows.splice(j, 1); upd(); } } }, 'Borrar')),
         h('div', { class: 'counters' },
-          counter(r, 'abordadas', 'Abordadas'), counter(r, 'degustadas', 'Degustadas'),
-          counter(r, 'original', 'Compra Original'), counter(r, 'zero', 'Compra ZERO')),
-        (() => { const inp = h('input', { class: 'input mt-3', placeholder: 'Nota (opcional)', value: r.nota || '' }); inp.addEventListener('input', () => { r.nota = inp.value; upd(false); }); return inp; })(),
+          counter(r, 'abordadas', 'Les ofreciste', 'Personas que invitaste a probar.'),
+          counter(r, 'degustadas', 'Probaron', 'Aceptaron y tomaron un vasito.'),
+          counter(r, 'original', 'Compraron Original', 'Latas de Original vendidas.'),
+          counter(r, 'zero', 'Compraron ZERO', 'Latas de ZERO vendidas.')),
+        (() => { const inp = h('input', { class: 'input mt-3', placeholder: 'Algo para anotar de esta hora (opcional)', value: r.nota || '' }); inp.addEventListener('input', () => { r.nota = inp.value; upd(false); }); return inp; })(),
       )).reverse(),
-      h('button', { type: 'button', class: 'btn btn-secondary btn-block mt-3', onclick: () => {
-        rows.push({ hora: nowTime().slice(0, 2) + ':00', abordadas: 0, degustadas: 0, original: 0, zero: 0 }); upd();
-      } }, icon('plus'), rows.length ? 'Nueva hora' : 'Empezar primera hora'));
+      h('button', { type: 'button', class: 'btn btn-block mt-3 ' + (rows.length ? 'btn-secondary' : 'btn-primary'), onclick: () => {
+        rows.push({ hora: nowTime().slice(0, 5), abordadas: 0, degustadas: 0, original: 0, zero: 0 }); upd();
+      } }, icon('plus'), rows.length ? 'Pasó una hora: empezar la siguiente' : 'Empezar a contar'));
   },
 };
+
+// Compara lo que compró el comercio la semana antes y la semana después de la degustación.
+function liftCard(d) {
+  const a = Number(d.venta_sem_anterior), b = Number(d.venta_sem_siguiente);
+  const hasB = d.venta_sem_siguiente !== undefined && d.venta_sem_siguiente !== '';
+  let title, cap, bad = false;
+  if (!hasB) { title = 'Antes y después'; cap = 'Cargá las latas de la semana después y acá vas a ver si la degustación sirvió.'; }
+  else if (!a) { title = b > 0 ? 'Empezó a comprar' : 'Sigue sin comprar'; cap = `La semana antes compró 0 latas y la semana después ${b}.`; bad = !(b > 0); }
+  else {
+    const pct = Math.round((b / a - 1) * 100);
+    bad = pct < 0;
+    title = pct > 0 ? `Compró ${pct}% más` : pct < 0 ? `Compró ${-pct}% menos` : 'Compró lo mismo';
+    cap = `Semana antes: ${a} latas · semana después: ${b} latas.`;
+  }
+  return h('div', { class: 'result' + (bad ? ' bad' : '') },
+    h('div', { class: 'ico', html: bad ? icons.x : icons.checkThin }),
+    h('div', {}, h('div', { class: 'h3' }, title), h('div', { class: 'caption' }, cap)));
+}
 
 function dispCard(d) {
   const disp = disponibilidad(d);
