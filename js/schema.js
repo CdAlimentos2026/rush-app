@@ -369,7 +369,7 @@ export const DEGUSTACION = {
           fields: [
             { k: 'respuestas', label: 'Preguntale a 5 personas: «¿Qué querés que pase hoy?»', type: 'multitext', n: 5, req: true,
               col: '"¿Qué querés que pase hoy?": cinco respuestas textuales',
-              hint: 'Anotá lo que responda cada una, tal cual. Ejemplo: «aguantar el turno de noche», «rendir en el gimnasio».' },
+              hint: 'Anotá lo que responda cada una, tal cual.' },
             { k: 'faq', label: '¿Qué preguntó la gente? ¿Cómo pedían la lata?', type: 'textarea',
               col: 'Preguntas frecuentes / palabras que usaron para pedir',
               hint: 'Opcional. Ejemplo: «¿tiene azúcar?», «dame una Rush», «¿cuál es la light?».' },
